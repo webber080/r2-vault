@@ -156,12 +156,81 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   .grid.list .card .meta { display: contents; }
   .grid.list .card .meta > span { color: var(--muted); font-size: 12px; font-family: var(--mono); white-space: nowrap; min-width: 80px; text-align: right; }
   .grid.list .card .meta > span:first-child { min-width: 70px; }
-  .grid.list .card .actions { position: static; opacity: 1; transform: none; display: flex; gap: 6px; }
-  .grid.list .card .actions button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
-  @media (max-width: 720px) {
-    .grid.list .card { grid-template-columns: 32px 1fr auto; gap: 8px; padding: 8px 10px; }
-    .grid.list .card .meta > span:first-child { display: none; }
+  /* 列表模式：完整 Windows 风格表格 */
+  .grid.list { display: block; }
+  .list-header,
+  .grid.list .card {
+    display: grid;
+    grid-template-columns: 28px minmax(120px, 1fr) 170px 110px 90px;
+    align-items: center; gap: 12px; padding: 8px 12px;
+    border-radius: 6px;
   }
+  .list-header {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    color: var(--muted); font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em;
+    cursor: default; user-select: none;
+  }
+  .list-header .col { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 0; }
+  .list-header .col:hover { color: var(--accent); }
+  .list-header .col .arrow { font-size: 9px; opacity: .6; }
+  .list-header .col.active { color: var(--accent); }
+  .list-header .col.right { justify-content: flex-end; text-align: right; }
+  .grid.list { padding-top: 6px; }
+  .grid.list .card { margin-bottom: 2px; transition: background .12s; }
+  .grid.list .card .icon-wrap { width: 28px; height: 28px; min-width: 28px; border-radius: 4px; font-size: 16px; margin: 0; background: transparent; }
+  .grid.list .card .name { font-size: 13px; min-height: 0; -webkit-line-clamp: 1; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grid.list .card .col { font-size: 12px; color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grid.list .card .col.right { text-align: right; }
+  .grid.list .card .col.type { color: var(--muted); }
+  .grid.list .card:hover { background: #f4f6fc; }
+  .grid.list .card.selected { background: #e9efff; border-color: #b3c2ff; }
+  .grid.list .card.selected .col { color: #2c3a66; }
+  /* 列表模式触屏长按 60ms 提示选中 */
+  .grid.list .card.press { background: #e9efff; }
+
+  @media (max-width: 720px) {
+    .list-header, .grid.list .card { grid-template-columns: 24px minmax(80px, 1fr) 90px; gap: 8px; padding: 8px 10px; }
+    .list-header .col.type, .grid.list .card .col.type,
+    .list-header .col.size, .grid.list .card .col.size { display: none; }
+  }
+  /* grid 模式下也支持选中态（点击 = 预览不变，selected 加边框提示） */
+  .grid:not(.list) .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,109,245,.18); }
+
+  /* 选中操作栏（顶部"已选 N 项"） */
+  .selection-bar {
+    display: flex; align-items: center; gap: 12px;
+    background: linear-gradient(135deg, #eef1fe, #e1e8ff);
+    border: 1px solid #c8d0f0; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+    animation: sel-fade .2s ease-out;
+  }
+  .selection-bar .label { color: #3b4a8c; font-weight: 600; }
+  .selection-bar .grow { flex: 1; }
+  .selection-bar button { min-height: 32px; padding: 4px 12px; font-size: 12px; }
+  .selection-bar .close { background: transparent; border: 0; color: #6b7593; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 6px; }
+  @keyframes sel-fade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+  /* 右键菜单 */
+  .context-menu {
+    position: fixed; z-index: 9999; min-width: 180px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(15,23,42,.18), 0 2px 6px rgba(15,23,42,.06);
+    padding: 4px; font-size: 13px;
+    animation: ctx-fade .12s ease-out;
+  }
+  .context-menu .item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: 6px; cursor: pointer;
+    color: var(--fg);
+  }
+  .context-menu .item:hover { background: #f0f3fc; }
+  .context-menu .item.danger { color: #c0392b; }
+  .context-menu .item.danger:hover { background: #fce9e6; }
+  .context-menu .sep { height: 1px; background: var(--border); margin: 4px 6px; }
+  .context-menu .shortcut { margin-left: auto; color: var(--muted); font-size: 11px; }
+  @keyframes ctx-fade { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
   .view-toggle { display: inline-flex; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
   .view-toggle button { background: transparent; border: 0; padding: 5px 10px; min-height: 30px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; font-family: inherit; }
   .view-toggle button.active { background: var(--accent); color: #fff; }
@@ -476,6 +545,10 @@ if (!TOKEN && !HAS_ACCESS) {
 let currentPrefix = '';
 let searchQuery = '';
 let VIEW_MODE = localStorage.getItem('r2_view') || 'grid';
+let SORT_BY = localStorage.getItem('r2_sort_by') || 'date';  // 'name'|'date'|'size'|'type'
+let SORT_DIR = localStorage.getItem('r2_sort_dir') || 'desc'; // 'asc'|'desc'
+let selectedKeys = new Set();  // 多选
+let pressTimer = null;  // 长按检测
 window.setViewMode = (m) => { VIEW_MODE = m; localStorage.setItem('r2_view', m); document.getElementById('view-grid').classList.toggle('active', m==='grid'); document.getElementById('view-list').classList.toggle('active', m==='list'); loadList(currentPrefix); };
 
 // ─── API ───
@@ -512,11 +585,35 @@ function fileIcon(key, ct) {
   if (/\\.(xlsx?|numbers)$/.test(k)) return '📗';
   return '📄';
 }
+function humanType(ct) {
+  ct = (ct || '').toLowerCase();
+  if (!ct) return '';
+  const map = {
+    'image/jpeg': 'JPEG 图片', 'image/jpg': 'JPEG 图片', 'image/png': 'PNG 图片',
+    'image/gif': 'GIF 图片', 'image/webp': 'WebP 图片', 'image/svg+xml': 'SVG 矢量图', 'image/bmp': 'BMP 图片', 'image/x-icon': '图标',
+    'application/pdf': 'PDF 文档',
+    'application/zip': 'ZIP 压缩包', 'application/x-tar': 'TAR 压缩包', 'application/gzip': 'GZ 压缩包', 'application/x-7z-compressed': '7Z 压缩包',
+    'application/json': 'JSON 数据',
+    'text/csv': 'CSV 表格', 'text/tab-separated-values': 'TSV 表格',
+    'text/html': 'HTML 网页', 'text/plain': '纯文本', 'text/markdown': 'Markdown 文本',
+    'video/mp4': 'MP4 视频', 'video/webm': 'WebM 视频', 'video/quicktime': 'MOV 视频',
+    'audio/mpeg': 'MP3 音频', 'audio/mp4': 'M4A 音频', 'audio/wav': 'WAV 音频', 'audio/flac': 'FLAC 音频', 'audio/ogg': 'OGG 音频',
+    'application/javascript': 'JavaScript', 'application/x-python': 'Python 脚本', 'application/octet-stream': '二进制',
+  };
+  return map[ct] || ct.split('/').pop().toUpperCase();
+}
 function humanSize(n) {
   if (n < 1024) return n + ' B';
   if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
   if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
   return (n/1073741824).toFixed(2) + ' GB';
+}
+function formatDate(iso) {
+  // Windows Explorer 风格：YYYY-MM-DD HH:MM
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 function humanDate(iso) {
   const d = new Date(iso);
@@ -546,20 +643,79 @@ async function loadList(prefix) {
       const q = searchQuery.toLowerCase();
       objs = objs.filter(o => o.key.toLowerCase().includes(q));
     }
-    // 按上传时间倒序（最新在前）
-    objs.sort((a, b) => new Date(b.uploaded) - new Date(a.uploaded));
+    // 排序
+    objs.sort((a, b) => {
+      let av, bv, cmp;
+      switch (SORT_BY) {
+        case 'name': av = a.key.toLowerCase(); bv = b.key.toLowerCase(); cmp = av < bv ? -1 : av > bv ? 1 : 0; break;
+        case 'size': cmp = a.size - b.size; break;
+        case 'type': cmp = (a.httpMetadata.contentType || '').localeCompare(b.httpMetadata.contentType || ''); break;
+        case 'date': default: cmp = new Date(a.uploaded) - new Date(b.uploaded); break;
+      }
+      return SORT_DIR === 'asc' ? cmp : -cmp;
+    });
     const grid = document.getElementById('grid');
+    grid.className = VIEW_MODE === 'list' ? 'grid list' : 'grid';
     if (objs.length === 0) {
       grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">🪣</div>' + (searchQuery ? '没有匹配的文件' : '此目录为空') + '</div>';
+    } else if (VIEW_MODE === 'list') {
+      // 列表模式：列头 + 行（无 inline 按钮）
+      const arrow = d => d === 'asc' ? '↑' : '↓';
+      const headCol = (col, label, align) => {
+        const active = SORT_BY === col;
+        return '<div class="col ' + (align || '') + (active ? ' active' : '') + '" data-sort="' + col + '">' +
+          '<span>' + label + '</span><span class="arrow">' + (active ? arrow(SORT_DIR) : '') + '</span></div>';
+      };
+      const header = '<div class="list-header">' +
+        '<div></div>' + headCol('name', '名称') + headCol('date', '修改时间') + headCol('type', '类型', 'right') + headCol('size', '大小', 'right') +
+      '</div>';
+      const rows = objs.map(o => {
+        const ic = fileIcon(o.key, o.httpMetadata.contentType);
+        const icon = (typeof ic === 'string') ? ic : '🖼';
+        const name = o.key.split('/').pop();
+        const sel = selectedKeys.has(o.key) ? ' selected' : '';
+        return '<div class="card' + sel + '" tabindex="0" data-key="' + esc(o.key) + '"' +
+          ' onclick="onFileClick(event, this.dataset.key)"' +
+          ' ondblclick="onFileDblClick(this.dataset.key)"' +
+          ' oncontextmenu="onFileRightClick(event, this.dataset.key)"' +
+          ' ontouchstart="onTouchStart(event, this.dataset.key)"' +
+          ' ontouchend="onTouchEnd(event)"' +
+          ' ontouchmove="onTouchEnd(event)">' +
+          '<div class="icon-wrap">' + icon + '</div>' +
+          '<div class="name" title="' + esc(o.key) + '">' + esc(name) + '</div>' +
+          '<div class="col">' + formatDate(o.uploaded) + '</div>' +
+          '<div class="col type right">' + esc(humanType(o.httpMetadata.contentType)) + '</div>' +
+          '<div class="col size right">' + humanSize(o.size) + '</div>' +
+        '</div>';
+      }).join('');
+      grid.innerHTML = header + rows;
+      // 列头点击切换排序
+      grid.querySelectorAll('.list-header .col').forEach(c => {
+        c.addEventListener('click', () => {
+          const col = c.dataset.sort;
+          if (SORT_BY === col) SORT_DIR = SORT_DIR === 'asc' ? 'desc' : 'asc';
+          else { SORT_BY = col; SORT_DIR = (col === 'name' || col === 'type') ? 'asc' : 'desc'; }
+          localStorage.setItem('r2_sort_by', SORT_BY);
+          localStorage.setItem('r2_sort_dir', SORT_DIR);
+          loadList(currentPrefix);
+        });
+      });
     } else {
-      grid.className = VIEW_MODE === 'list' ? 'grid list' : 'grid';
+      // 平铺模式：保留原结构（带 inline 按钮）
       grid.innerHTML = objs.map(o => {
         const ic = fileIcon(o.key, o.httpMetadata.contentType);
         const name = o.key.split('/').pop();
         const thumb = ic.type === 'img'
           ? '<img src="' + rawUrl(o.key, '&inline=1') + '" loading="lazy" alt="">'
           : ic;
-        return '<div class="card" tabindex="0" data-key="' + esc(o.key) + '" onclick="onCardClick(this.dataset.key)" onkeydown="if(event.key===\\'Enter\\')onCardClick(this.dataset.key)">' +
+        const sel = selectedKeys.has(o.key) ? ' selected' : '';
+        return '<div class="card' + sel + '" tabindex="0" data-key="' + esc(o.key) + '"' +
+          ' onclick="onFileClick(event, this.dataset.key)"' +
+          ' ondblclick="onFileDblClick(this.dataset.key)"' +
+          ' oncontextmenu="onFileRightClick(event, this.dataset.key)"' +
+          ' ontouchstart="onTouchStart(event, this.dataset.key)"' +
+          ' ontouchend="onTouchEnd(event)"' +
+          ' ontouchmove="onTouchEnd(event)">' +
           '<div class="icon-wrap">' + thumb + '</div>' +
           '<div class="name" title="' + esc(name) + '">' + esc(name) + '</div>' +
           '<div class="meta"><span>' + humanSize(o.size) + '</span><span>' + humanDate(o.uploaded) + '</span></div>' +
@@ -645,11 +801,197 @@ document.getElementById('menuBtn').addEventListener('click', () => {
 });
 
 // ─── 文件操作 ───
-function onCardClick(key) {
+// 单击：选中（list 模式）或预览（grid 模式）
+// 双击：预览
+// 右键 / 长按：弹出菜单
+function onFileClick(e, key) {
+  // Ctrl/Cmd 多选
+  if (e && (e.ctrlKey || e.metaKey)) {
+    toggleSelect(key);
+  } else if (e && e.shiftKey && lastSelectedKey) {
+    // 范围选择
+    const cards = [...document.querySelectorAll('#grid .card')];
+    const i1 = cards.findIndex(c => c.dataset.key === lastSelectedKey);
+    const i2 = cards.findIndex(c => c.dataset.key === key);
+    if (i1 >= 0 && i2 >= 0) {
+      const [a, b] = i1 < i2 ? [i1, i2] : [i2, i1];
+      selectedKeys.clear();
+      for (let i = a; i <= b; i++) selectedKeys.add(cards[i].dataset.key);
+      updateSelectedDom();
+    }
+  } else {
+    // 单选
+    if (selectedKeys.size === 1 && selectedKeys.has(key)) {
+      // 再次点击同一个 → 预览
+      openFile(key);
+    } else {
+      selectedKeys.clear();
+      selectedKeys.add(key);
+      lastSelectedKey = key;
+      updateSelectedDom();
+    }
+  }
+}
+function onFileDblClick(key) {
+  openFile(key);
+}
+function openFile(key) {
   const ct = guessContentType(key);
-  if (ct.startsWith('image/') || ct === 'application/pdf' || ct.startsWith('text/')) openPreview(key, ct);
+  if (ct.startsWith('image/') || ct === 'application/pdf' || ct.startsWith('text/') || ct.startsWith('video/') || ct.startsWith('audio/')) openPreview(key, ct);
   else downloadFile(key);
 }
+function toggleSelect(key) {
+  if (selectedKeys.has(key)) selectedKeys.delete(key);
+  else selectedKeys.add(key);
+  lastSelectedKey = key;
+  updateSelectedDom();
+}
+function clearSelection() {
+  if (selectedKeys.size === 0) return;
+  selectedKeys.clear();
+  updateSelectedDom();
+  hideContextMenu();
+}
+function updateSelectedDom() {
+  document.querySelectorAll('#grid .card').forEach(c => {
+    c.classList.toggle('selected', selectedKeys.has(c.dataset.key));
+  });
+  renderSelectionBar();
+}
+function renderSelectionBar() {
+  let bar = document.getElementById('selBar');
+  if (selectedKeys.size === 0) {
+    if (bar) bar.remove();
+    return;
+  }
+  let totalSize = 0;
+  document.querySelectorAll('#grid .card').forEach(c => {
+    if (selectedKeys.has(c.dataset.key)) {
+      const sizeText = c.querySelector('.col.size')?.textContent || c.querySelector('.meta span')?.textContent || '';
+      totalSize += parseSizeText(sizeText);
+    }
+  });
+  const html = '<div class="selection-bar" id="selBar">' +
+    '<span class="label">已选 ' + selectedKeys.size + ' 项</span>' +
+    '<span style="color:var(--muted)">· ' + humanSize(totalSize) + '</span>' +
+    '<div class="grow"></div>' +
+    (selectedKeys.size === 1 ? '<button onclick="openFile(\\'' + jsq([...selectedKeys][0]) + '\\')">预览</button>' : '') +
+    '<button onclick="downloadSelected()">下载</button>' +
+    '<button class="danger" onclick="deleteSelected()">删除</button>' +
+    '<button class="close" onclick="clearSelection()" title="取消选择">✕</button>' +
+  '</div>';
+  const files = document.querySelector('.files-header');
+  if (bar) bar.outerHTML = html;
+  else files.insertAdjacentHTML('beforebegin', html);
+  // 新建 bar 没有事件，需要 attach
+  const newBar = document.getElementById('selBar');
+  if (newBar) {
+    newBar.querySelector('.close').onclick = clearSelection;
+    const downloadBtn = [...newBar.querySelectorAll('button')].find(b => b.textContent === '下载');
+    if (downloadBtn) downloadBtn.onclick = downloadSelected;
+    const deleteBtn = [...newBar.querySelectorAll('button')].find(b => b.textContent === '删除');
+    if (deleteBtn) deleteBtn.onclick = deleteSelected;
+    const previewBtn = [...newBar.querySelectorAll('button')].find(b => b.textContent === '预览');
+    if (previewBtn) previewBtn.onclick = () => openFile([...selectedKeys][0]);
+  }
+}
+function parseSizeText(t) {
+  t = (t || '').trim();
+  const m = t.match(/([\d.]+)\s*(B|KB|MB|GB)/);
+  if (!m) return 0;
+  const n = parseFloat(m[1]);
+  const u = m[2];
+  return n * (u === 'GB' ? 1073741824 : u === 'MB' ? 1048576 : u === 'KB' ? 1024 : 1);
+}
+function downloadSelected() {
+  for (const k of selectedKeys) downloadFile(k);
+}
+async function deleteSelected() {
+  if (selectedKeys.size === 0) return;
+  if (!confirm('确定删除 ' + selectedKeys.size + ' 个文件？此操作不可恢复。')) return;
+  showLoading(true);
+  for (const k of selectedKeys) {
+    try { await api('/api/delete?key=' + encodeURIComponent(k), { method: 'DELETE' }); }
+    catch (e) { toast('删除失败：' + k + ' ' + e.message, 'err'); }
+  }
+  selectedKeys.clear();
+  await Promise.all([loadList(currentPrefix), loadCounts(), loadUsage()]);
+  showLoading(false);
+}
+let lastSelectedKey = null;
+function onFileRightClick(e, key) {
+  e.preventDefault();
+  // 选中当前（如果未选）
+  if (!selectedKeys.has(key)) {
+    selectedKeys.clear();
+    selectedKeys.add(key);
+    lastSelectedKey = key;
+    updateSelectedDom();
+  }
+  showContextMenu(e.clientX, e.clientY, key);
+}
+function showContextMenu(x, y, key) {
+  hideContextMenu();
+  const items = [
+    { icon: '👁', label: '预览', act: 'open' },
+    { icon: '⬇', label: '下载', act: 'download' },
+    { sep: true },
+    { icon: '🔗', label: '复制链接', act: 'copy' },
+    { icon: '📋', label: '复制 key', act: 'copykey' },
+    { sep: true },
+    { icon: '🗑', label: '删除', act: 'delete', danger: true },
+  ];
+  const html = '<div class="context-menu" id="ctxMenu" style="left:' + Math.min(x, window.innerWidth - 200) + 'px;top:' + Math.min(y, window.innerHeight - 240) + 'px">' +
+    items.map(i => {
+      if (i.sep) return '<div class="sep"></div>';
+      return '<div class="item ' + (i.danger ? 'danger' : '') + '" data-act="' + i.act + '">' +
+        '<span>' + i.icon + '</span><span>' + i.label + '</span></div>';
+    }).join('') +
+  '</div>';
+  document.body.insertAdjacentHTML('beforeend', html);
+  const menu = document.getElementById('ctxMenu');
+  menu.querySelectorAll('.item').forEach(el => {
+    el.onclick = () => {
+      const act = el.dataset.act;
+      const k = [...selectedKeys][0];
+      hideContextMenu();
+      if (act === 'open') openFile(k);
+      else if (act === 'download') downloadFile(k);
+      else if (act === 'copy') { navigator.clipboard.writeText(rawUrl(k, '')); toast('已复制链接', 'ok'); }
+      else if (act === 'copykey') { navigator.clipboard.writeText(k); toast('已复制 key: ' + k.split('/').pop(), 'ok'); }
+      else if (act === 'delete') deleteSelected();
+    };
+  });
+  // 点击外部关闭
+  setTimeout(() => {
+    document.addEventListener('click', hideContextMenu, { once: true });
+    document.addEventListener('contextmenu', hideContextMenu, { once: true });
+  }, 10);
+}
+function hideContextMenu() {
+  const m = document.getElementById('ctxMenu');
+  if (m) m.remove();
+}
+// 触屏长按 = 右键
+function onTouchStart(e, key) {
+  pressTimer = setTimeout(() => {
+    const t = e.touches[0];
+    onFileRightClick({ preventDefault: () => e.preventDefault(), clientX: t.clientX, clientY: t.clientY }, key);
+  }, 500);
+}
+function onTouchEnd() {
+  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+}
+// Esc 关闭菜单/清除选择
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { hideContextMenu(); clearSelection(); }
+  // Cmd/Ctrl+A 全部选中（仅 list 模式）
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a' && VIEW_MODE === 'list') {
+    e.preventDefault();
+    document.querySelectorAll('#grid .card').forEach(c => selectedKeys.add(c.dataset.key));
+    updateSelectedDom();
+  }
+});
 function guessContentType(key) {
   const k = key.toLowerCase();
   if (k.endsWith('.html') || k.endsWith('.htm')) return 'text/html';
