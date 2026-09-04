@@ -141,8 +141,8 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   .tree-item .count { margin-left: auto; font-size: 11px; color: var(--muted); font-family: var(--mono); background: #eef1f7; padding: 1px 8px; border-radius: 99px; }
   .tree-item.active .count { background: #dde4ff; color: var(--brand-deep); }
 
-  section.files { flex: 1; overflow-y: auto; padding: 18px 20px 40px; }
-  .files-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  section.files { flex: 1; overflow-y: auto; padding: 0 20px 40px; }
+  .files-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; padding-top: 18px; flex-wrap: wrap; }
   .files-header h2 { margin: 0; font-size: 18px; font-weight: 700; }
   .files-header .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
 
@@ -165,8 +165,10 @@ export const BROWSER_HTML = `<!DOCTYPE html>
     align-items: center; gap: 12px; padding: 8px 12px;
     border-radius: 6px;
   }
+  /* 列头容器：作为 section.files 直接子元素，sticky 吸顶；负 margin 抵消父容器 padding-top 的留白 */
+  #listHeader { position: sticky; top: 0; z-index: 2; margin: 0 -20px; padding: 0 20px; }
+  #listHeader:empty { display: none; }
   .list-header {
-    position: sticky; top: 0; z-index: 2;
     background: var(--bg); border-bottom: 1px solid var(--border);
     color: var(--muted); font-size: 11px; font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em;
@@ -392,7 +394,8 @@ export const BROWSER_HTML = `<!DOCTYPE html>
       padding-top: 18px;
     }
     aside.tree.open { transform: none; box-shadow: var(--shadow-2); }
-    section.files { padding: 14px 12px 40px; }
+    section.files { padding: 0 12px 40px; }
+    #listHeader { margin: 0 -12px; padding: 0 12px; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
     .card .icon-wrap { height: 88px; font-size: 32px; }
   }
@@ -458,6 +461,7 @@ export const BROWSER_HTML = `<!DOCTYPE html>
         </div>
       </div>
     </div>
+    <div id="listHeader"></div>
     <div class="grid" id="grid"></div>
   </section>
 </main>
@@ -682,6 +686,8 @@ async function loadList(prefix) {
     });
     const grid = document.getElementById('grid');
     grid.className = VIEW_MODE === 'list' ? 'grid list' : 'grid';
+    // 非列表模式或空集时清空列头容器
+    if (VIEW_MODE !== 'list' || objs.length === 0) document.getElementById('listHeader').innerHTML = '';
     if (objs.length === 0) {
       grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">🪣</div>' + (searchQuery ? '没有匹配的文件' : '此目录为空') + '</div>';
     } else if (VIEW_MODE === 'list') {
@@ -689,12 +695,15 @@ async function loadList(prefix) {
       const arrow = d => d === 'asc' ? '↑' : '↓';
       const headCol = (col, label, align) => {
         const active = SORT_BY === col;
-        return '<div class="col ' + (align || '') + (active ? ' active' : '') + '" data-sort="' + col + '">' +
+        // class 同时带 col 标识（type/size）与右对齐，供媒体查询隐藏
+        return '<div class="col ' + col + ' ' + (align || '') + (active ? ' active' : '') + '" data-sort="' + col + '">' +
           '<span>' + label + '</span><span class="arrow">' + (active ? arrow(SORT_DIR) : '') + '</span></div>';
       };
       const header = '<div class="list-header">' +
         '<div></div>' + headCol('name', '名称') + headCol('date', '修改时间') + headCol('type', '类型', 'right') + headCol('size', '大小', 'right') +
       '</div>';
+      // 把列头放到滚动容器直接子元素（#listHeader），使 sticky 能吸到 section.files 顶部
+      document.getElementById('listHeader').innerHTML = header;
       const rows = objs.map(o => {
         const ic = fileIcon(o.key, o.httpMetadata.contentType);
         // 图片类型：显示缩略图（与平铺模式一致）；其他类型用 emoji
@@ -717,9 +726,9 @@ async function loadList(prefix) {
           '<div class="col size right">' + humanSize(o.size) + '</div>' +
         '</div>';
       }).join('');
-      grid.innerHTML = header + rows;
+      grid.innerHTML = rows;
       // 列头点击切换排序
-      grid.querySelectorAll('.list-header .col').forEach(c => {
+      document.getElementById('listHeader').querySelectorAll('.list-header .col').forEach(c => {
         c.addEventListener('click', () => {
           const col = c.dataset.sort;
           if (SORT_BY === col) SORT_DIR = SORT_DIR === 'asc' ? 'desc' : 'asc';
