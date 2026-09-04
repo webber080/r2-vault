@@ -411,7 +411,7 @@ export const BROWSER_HTML = `<!DOCTYPE html>
 
 <script>
 // ─── 配置 ───
-// 同源调用：files.supertato.top/api/*，CF Access cookie 自动携带
+// 同源调用：<UI 域名>/api/*，CF Access cookie 自动携带
 const API_BASE = location.origin;
 let TOKEN = localStorage.getItem('r2_token') || '';
 
