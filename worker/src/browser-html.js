@@ -385,7 +385,7 @@ export const BROWSER_HTML = `<!DOCTYPE html>
 
 <script>
 // ─── 配置 ───
-// 同源调用：<UI域名>/api/*，CF Access cookie 自动携带
+// 同源调用：files.supertato.top/api/*，CF Access cookie 自动携带
 const API_BASE = location.origin;
 let TOKEN = localStorage.getItem('r2_token') || '';
 
@@ -399,12 +399,41 @@ if (!TOKEN && !HAS_ACCESS) {
         <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#6a8bff,#4f6df5 55%,#7c5cff);display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px">📦</div>
         <h2 style="margin:0 0 6px;font-size:19px">R2 Vault</h2>
         <p style="margin:0 0 20px;color:#69718a;font-size:13px">输入访问令牌以继续。令牌只保存在本浏览器。</p>
-        <input id="token-input" type="password" placeholder="访问令牌" autocomplete="current-password"
-          style="width:100%;padding:12px 14px;min-height:44px;border:1px solid #e6e9f0;border-radius:10px;font-family:ui-monospace,Menlo,monospace;font-size:13px;outline:none">
-        <button onclick="saveToken()" style="margin-top:14px;width:100%;min-height:46px;background:linear-gradient(135deg,#4f6df5,#3b55e0);color:#fff;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">进入</button>
-        <p style="margin:14px 0 0;font-size:11px;color:#9aa1b5">令牌错误会提示 401，可重新输入。</p>
+        <input id="token-input" type="password" placeholder="访问令牌（32 位 hex）" autocomplete="current-password" autocapitalize="off" spellcheck="false"
+          style="width:100%;padding:12px 14px;min-height:44px;border:1px solid #e6e9f0;border-radius:10px;font-family:ui-monospace,Menlo,monospace;font-size:14px;letter-spacing:.5px;outline:none">
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button onclick="testToken()" id="test-btn" style="flex:1;min-height:46px;background:#fff;color:#4f6df5;border:1px solid #c8d0f0;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">测试</button>
+          <button onclick="saveToken()" id="enter-btn" style="flex:2;min-height:46px;background:linear-gradient(135deg,#4f6df5,#3b55e0);color:#fff;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">进入</button>
+        </div>
+        <p id="token-msg" style="margin:12px 0 0;font-size:12px;line-height:1.5;color:#9aa1b5;text-align:center;min-height:18px"></p>
       </div>
     </div>\`;
+  window.testToken = async () => {
+    const v = document.getElementById('token-input').value.trim();
+    const msg = document.getElementById('token-msg');
+    const testBtn = document.getElementById('test-btn');
+    if (!v) { msg.style.color = '#d04'; msg.textContent = '请先粘贴令牌'; return; }
+    testBtn.disabled = true; testBtn.textContent = '测试中…';
+    msg.style.color = '#69718a'; msg.textContent = '正在验证令牌…';
+    try {
+      const r = await fetch('/api/usage?token=' + encodeURIComponent(v));
+      if (r.ok) {
+        msg.style.color = '#0a8a4a';
+        msg.textContent = '✓ 令牌有效，存储用量接口返回成功。点"进入"。';
+        testBtn.textContent = '✓ 有效'; testBtn.style.color = '#0a8a4a';
+      } else {
+        msg.style.color = '#d04';
+        msg.textContent = '✗ ' + r.status + ' 令牌无效或已吊销，请检查后重试。';
+        testBtn.textContent = '测试'; testBtn.style.color = '#4f6df5';
+      }
+    } catch (e) {
+      msg.style.color = '#d04';
+      msg.textContent = '✗ 网络错误：' + e.message;
+      testBtn.textContent = '测试'; testBtn.style.color = '#4f6df5';
+    } finally {
+      testBtn.disabled = false;
+    }
+  };
   window.saveToken = () => {
     const v = document.getElementById('token-input').value.trim();
     if (!v) return;
@@ -412,7 +441,7 @@ if (!TOKEN && !HAS_ACCESS) {
     location.reload();
   };
   document.getElementById('token-input')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') saveToken();
+    if (e.key === 'Enter') testToken();
   });
   throw new Error('awaiting token');
 }
