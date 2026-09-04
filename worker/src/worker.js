@@ -249,6 +249,8 @@ async function timingSafeEqualStr(a, b) {
 async function checkAgentAuth(request, env, url) {
   // Bearer 头优先；?token= 兜底（仅用于 <img>/<embed> 等无法自定义头部的标签，
   // 且仅限 GET 类接口使用——写操作必须走头）。
+  // 匹配任意已配置的 token（AGENT_TOKEN + 可选 MOBILE_TOKEN），
+  // 各自可单独吊销——手机丢了只 revoke MOBILE_TOKEN 即可，不影响其他 Agent。
   let candidate = null;
   const h = request.headers.get('Authorization') || '';
   const m = h.match(/^Bearer\s+(.+)$/i);
@@ -257,8 +259,10 @@ async function checkAgentAuth(request, env, url) {
     const q = url.searchParams.get('token');
     if (q) candidate = q;
   }
-  if (!candidate || !env.AGENT_TOKEN) return false;
-  return timingSafeEqualStr(candidate, env.AGENT_TOKEN);
+  if (!candidate) return false;
+  if (env.AGENT_TOKEN && (await timingSafeEqualStr(candidate, env.AGENT_TOKEN))) return true;
+  if (env.MOBILE_TOKEN && (await timingSafeEqualStr(candidate, env.MOBILE_TOKEN))) return true;
+  return false;
 }
 
 // ── Cloudflare Access JWT 验证 ──
@@ -435,12 +439,18 @@ export default {
           identity = { email: payload.email || null, iat: payload.iat || null };
         } catch { /* ignore */ }
       }
+      // 实测：把当前请求当一次调用试 checkAgentAuth——不报 token 内容，只报 true/false
+      // 用空 url 不影响 Bearer 头路径（?token= 路径需要 url，这里跳过）
+      const testUrl = new URL(request.url); const testOk = await checkAgentAuth(request, env, testUrl);
       return json({
         hasJwtHeader: !!jwt,
         hasEmailHeader: !!request.headers.get('cf-access-authenticated-user-email'),
         hasAccessCookie: /CF_Authorization=/.test(request.headers.get('Cookie') || ''),
         hasBearer: !!(request.headers.get('Authorization') || '').match(/^Bearer\s/i),
         jwtSignatureValid: jwt ? await verifyAccessJwt(jwt, env) : false,
+        agentAuthTestResult: testOk,    // Bearer 头测一次（含 ?token= 失败场景）—— null url 跳过 token 路径
+        agentTokenConfigured: !!env.AGENT_TOKEN,
+        mobileTokenConfigured: !!env.MOBILE_TOKEN,
         identity,
         teamDomainConfigured: !!env.ACCESS_TEAM_DOMAIN,
       });
@@ -450,7 +460,7 @@ export default {
     if (path.startsWith('/api/')) {
       const agentOk = await checkAgentAuth(request, env, url);
       const accessOk = agentOk ? false : await checkAccessAuth(request, env);
-      if (!agentOk && !accessOk) return err('Unauthorized', 401);
+if (!agentOk && !accessOk) return err('Unauthorized', 401);
 
       // PUT /api/upload?key=<key>
       if (path === '/api/upload' && request.method === 'PUT') {
@@ -631,9 +641,5 @@ export default {
       if (!r.truncated) break;
       cursor = r.cursor;
     }
-
-    console.log(
-      `[r2-vault] cleanup done: deleted=${deletedCount} bytes=${deletedBytes} prefix=${TEMP_PREFIX} max_age_days=${TEMP_MAX_AGE_DAYS}`,
-    );
   },
 };
