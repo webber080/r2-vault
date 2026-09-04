@@ -220,10 +220,22 @@ export const BROWSER_HTML = `<!DOCTYPE html>
     padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
     animation: sel-fade .2s ease-out;
   }
-  .selection-bar .label { color: #3b4a8c; font-weight: 600; }
-  .selection-bar .grow { flex: 1; }
-  .selection-bar button { min-height: 32px; padding: 4px 12px; font-size: 12px; }
-  .selection-bar .close { background: transparent; border: 0; color: #6b7593; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 6px; }
+  .selection-bar .label { color: #3b4a8c; font-weight: 600; white-space: nowrap; flex: none; }
+  .selection-bar .grow { flex: 1; min-width: 0; }
+  .selection-bar button { min-height: 32px; padding: 4px 12px; font-size: 12px; white-space: nowrap; flex: none; }
+  .selection-bar .close { background: transparent; border: 0; color: #6b7593; cursor: pointer; font-size: 18px; line-height: 1; padding: 0 6px; flex: none; }
+  /* 窄容器：工具条紧凑排版，按钮文字不换行、缩小间距与字号 */
+  @container (max-width: 900px) {
+    .selection-bar { gap: 8px; padding: 8px 10px; font-size: 12px; }
+    .selection-bar button { padding: 4px 9px; font-size: 12px; }
+    .selection-bar .label { font-size: 12px; }
+  }
+  @container (max-width: 620px) {
+    .selection-bar { gap: 6px; padding: 7px 9px; }
+    .selection-bar button { padding: 3px 7px; font-size: 11px; min-height: 30px; }
+    .selection-bar .label { font-size: 11px; }
+    .selection-bar .close { font-size: 16px; }
+  }
   @keyframes sel-fade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
   /* 右键菜单 */
