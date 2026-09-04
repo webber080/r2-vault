@@ -64,6 +64,17 @@ self.addEventListener('fetch', (e) => {
 });
 `;
 
+// TWA Digital Asset Links（用于 Android TWA 验证：包名 + 签名 cert SHA-256）
+// APK 用 debug key 签名，真机正式发版时换成生产 keystore 的 SHA-256
+const ASSET_LINKS_JSON = JSON.stringify([{
+  relation: ['delegate_permission/common.handle_all_urls'],
+  target: {
+    namespace: 'android_app',
+    package_name: 'top.supertato.r2vault',
+    sha256_cert_fingerprints: ['6c656474c8d59b8c8916d4e4889ad23ef7bd9bd94dbb3e1845852158a1b9cc70'],
+  },
+}]);
+
 // 应用图标（渐变圆角方块 + 白色箱体，程序化 PNG 生成太重，用 SVG 转 PNG 不行——
 // 直接内嵌两枚 base64 PNG。这里用最小合法 PNG：渐变背景 + 简单图形由前端 canvas 生成不可行，
 // 改为纯色圆角图标（视觉干净即可）。
@@ -426,6 +437,13 @@ export default {
       // CSP 下 <link rel=icon> 也 OK；PNG 是构建时程序化生成，缓存 1 天
       return new Response(makeIconPng(parseInt(iconMatch[1], 10)), {
         headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' },
+      });
+    }
+    // TWA Digital Asset Links：让 Android TWA 验证包名 + 签名，
+    // 验证通过后系统隐藏 URL 栏，体验等同原生 App
+    if (path === '/.well-known/assetlinks.json') {
+      return new Response(ASSET_LINKS_JSON, {
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
       });
     }
 
