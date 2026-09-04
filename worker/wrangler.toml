@@ -1,0 +1,30 @@
+name = "r2-vault"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+
+# ── 你的两个自定义域名（改成你自己的）──
+# API_DOMAIN: AI Agent / CLI 用（Bearer Token）
+# UI_DOMAIN:  浏览器界面用（Cloudflare Access 保护）
+# 注意：Custom Domain 不能带 /* 通配符；域名 DNS 必须先删除同名的手动 CNAME/A 记录
+routes = [
+  { pattern = "files.example.com", custom_domain = true },
+  { pattern = "r2.example.com",    custom_domain = true },
+]
+
+# ── R2 桶绑定 ──
+# 先在 Cloudflare 控制台创建 R2 bucket（免费 10GB），把 bucket_name 改成你的
+[[r2_buckets]]
+binding = "agent_vault"
+bucket_name = "my-vault"
+
+# ── 定时清理：每月 1 号、15 号 03:00 UTC 清掉 temp/ 下 14 天前的文件 ──
+[triggers]
+crons = ["0 3 1,15 * *"]
+
+# Secrets（用 `wrangler secret put XXX` 设置，不要写进本文件）：
+#   AGENT_TOKEN         必填。AI Agent 的 Bearer Token（64 位随机 hex 推荐）
+#   ACCESS_TEAM_DOMAIN  推荐。你的 Access 团队域，如 myteam.cloudflareaccess.com
+#   ACCESS_AUD          推荐。Access 应用的 AUD（见 docs/setup-access.md）
+#
+# 可选 vars（可写在这里或用 secret）：
+#   MAX_UPLOAD_MB       单文件上传上限 MB，默认 512
