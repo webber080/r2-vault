@@ -141,12 +141,13 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   .tree-item .count { margin-left: auto; font-size: 11px; color: var(--muted); font-family: var(--mono); background: #eef1f7; padding: 1px 8px; border-radius: 99px; }
   .tree-item.active .count { background: #dde4ff; color: var(--brand-deep); }
 
-  section.files { flex: 1; overflow-y: auto; padding: 0 20px 40px; }
+  /* section.files 设为容器查询容器：列表/卡片基于其实际宽度响应，而非视口 */
+  section.files { flex: 1; overflow-y: auto; padding: 0 20px 40px; container-type: inline-size; }
   .files-header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 14px; padding-top: 18px; flex-wrap: wrap; }
   .files-header h2 { margin: 0; font-size: 18px; font-weight: 700; }
   .files-header .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 20cqw, 190px), 1fr)); gap: clamp(10px, 2.5cqw, 14px); }
   /* 列表模式 */
   .grid.list { display: block; }
   .grid.list .card { display: grid; grid-template-columns: 36px 1fr auto auto; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; }
@@ -192,11 +193,21 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   /* 列表模式触屏长按 60ms 提示选中 */
   .grid.list .card.press { background: #e9efff; }
 
-  @media (max-width: 900px) {
-    /* 手机/平板端保留大小列，隐藏类型列；时间用紧凑格式。放宽断点避免大屏/横屏 5 列挤压致列头换行 */
+  /* 列表表格基于容器宽度响应：窄容器隐藏类型列，收窄列宽（容器查询比媒体查询更准，不受侧栏开合影响） */
+  @container (max-width: 900px) {
     .list-header, .grid.list .card { grid-template-columns: 24px minmax(60px, 1fr) 78px 62px; gap: 8px; padding: 8px 10px; }
     .list-header .col.type, .grid.list .card .col.type { display: none; }
     .list-header .col.size, .grid.list .card .col.size { min-width: 56px; }
+  }
+  @container (max-width: 620px) {
+    /* 很窄容器：进一步收窄日期列，保证大小列可读 */
+    .list-header, .grid.list .card { grid-template-columns: 22px minmax(52px, 1fr) 74px 58px; gap: 6px; padding: 7px 8px; }
+    .list-header .col, .grid.list .card .col { font-size: 11px; }
+  }
+  /* 卡片网格基于容器宽度分档列数（默认 auto-fill 自适应，此处约束最小/最大列宽） */
+  @container (max-width: 480px) {
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .card .icon-wrap { height: 84px; font-size: 30px; }
   }
   /* grid 模式下也支持选中态（点击 = 预览不变，selected 加边框提示） */
   .grid:not(.list) .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,109,245,.18); }
@@ -371,11 +382,10 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   .scrim.show { opacity: 1; pointer-events: auto; }
 
   /* ═══════════ 响应式 ═══════════ */
-  /* 平板 ≤1024：搜索收窄 */
+  /* 平板 ≤1024：搜索收窄（卡片网格列宽由容器查询负责） */
   @media (max-width: 1024px) {
     .search { width: 190px; }
     .logo .badge { display: none; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); }
   }
   /* 手机 ≤720：抽屉侧栏 + 精简顶栏 */
   @media (max-width: 720px) {
@@ -396,12 +406,10 @@ export const BROWSER_HTML = `<!DOCTYPE html>
     aside.tree.open { transform: none; box-shadow: var(--shadow-2); }
     section.files { padding: 0 12px 40px; }
     #listHeader { margin: 0 -12px; padding: 0 12px; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
     .card .icon-wrap { height: 88px; font-size: 32px; }
   }
-  /* 小手机 ≤400 */
+  /* 小手机 ≤400：仅隐藏顶栏标题（卡片网格列宽由容器查询负责） */
   @media (max-width: 400px) {
-    .grid { grid-template-columns: repeat(2, 1fr); }
     .logo span.title { display: none; }
   }
   @media (min-width: 721px) { .scrim { display: none; } }
