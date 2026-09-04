@@ -2,7 +2,7 @@
 
 ## 你的身份与凭证
 - 每台服务器已配置好凭证：`~/.r2-vault/token`（Bearer Token，600 权限）
-- API 入口：`https://r2.supertato.top`
+- API 入口：`https://api.yourdomain.com`
 - 可选 CLI：`~/.local/bin/r2`（零依赖 Node 单文件）
 
 ## 目录约定（必须遵守）
@@ -15,7 +15,7 @@
 
 ## 方式一：CLI（推荐，最省事）
 ```bash
-export R2_BASE=https://r2.supertato.top        # 建议写进 ~/.bashrc（已写）
+export R2_BASE=https://api.yourdomain.com        # 建议写进 ~/.bashrc（已写）
 
 r2 put /path/local.pdf reports/report.pdf     # 上传（key 可省略→uploads/文件名）
 r2 get reports/report.pdf /tmp/out.pdf        # 下载
@@ -30,7 +30,7 @@ r2 browse                                      # 打开浏览器界面（仅桌�
 所有请求带 `Authorization: Bearer <token>`，token 从 `~/.r2-vault/token` 读。
 
 ```bash
-TOKEN=$(cat ~/.r2-vault/token); BASE=https://r2.supertato.top
+TOKEN=$(cat ~/.r2-vault/token); BASE=https://api.yourdomain.com
 
 # 上传（body = 原始字节）
 curl -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/pdf" \
@@ -53,7 +53,7 @@ Python:
 ```python
 import os, urllib.request
 token = open(os.path.expanduser('~/.r2-vault/token')).read().strip()
-BASE = 'https://r2.supertato.top'
+BASE = 'https://api.yourdomain.com'
 def api(path, method='GET', data=None, ct='application/octet-stream'):
     req = urllib.request.Request(BASE + path, method=method, data=data,
         headers={'Authorization': 'Bearer ' + token, 'Content-Type': ct})
