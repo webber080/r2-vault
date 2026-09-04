@@ -147,6 +147,26 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   .files-header .meta { color: var(--muted); font-size: 12px; font-family: var(--mono); }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 14px; }
+  /* 列表模式 */
+  .grid.list { display: block; }
+  .grid.list .card { display: grid; grid-template-columns: 36px 1fr auto auto; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 8px; }
+  .grid.list .card:hover { transform: none; }
+  .grid.list .card .icon-wrap { height: 36px; width: 36px; min-width: 36px; margin: 0; border-radius: 6px; font-size: 18px; }
+  .grid.list .card .name { font-size: 13px; min-height: 0; -webkit-line-clamp: 1; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .grid.list .card .meta { display: contents; }
+  .grid.list .card .meta > span { color: var(--muted); font-size: 12px; font-family: var(--mono); white-space: nowrap; min-width: 80px; text-align: right; }
+  .grid.list .card .meta > span:first-child { min-width: 70px; }
+  .grid.list .card .actions { position: static; opacity: 1; transform: none; display: flex; gap: 6px; }
+  .grid.list .card .actions button { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+  @media (max-width: 720px) {
+    .grid.list .card { grid-template-columns: 32px 1fr auto; gap: 8px; padding: 8px 10px; }
+    .grid.list .card .meta > span:first-child { display: none; }
+  }
+  .view-toggle { display: inline-flex; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 2px; gap: 2px; }
+  .view-toggle button { background: transparent; border: 0; padding: 5px 10px; min-height: 30px; border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 14px; line-height: 1; font-family: inherit; }
+  .view-toggle button.active { background: var(--accent); color: #fff; }
+  .files-header { gap: 10px; }
+  .files-header .right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .card {
     background: var(--panel); border: 1px solid var(--border);
     border-radius: var(--r-m); padding: 12px;
@@ -360,7 +380,13 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   <section class="files">
     <div class="files-header">
       <h2 id="current-path">全部</h2>
-      <span class="meta" id="current-meta"></span>
+      <div class="right">
+        <span class="meta" id="current-meta"></span>
+        <div class="view-toggle" role="tablist" aria-label="视图模式">
+          <button id="view-grid" type="button" role="tab" aria-label="平铺" title="平铺视图">▦</button>
+          <button id="view-list" type="button" role="tab" aria-label="列表" title="列表视图">☰</button>
+        </div>
+      </div>
     </div>
     <div class="grid" id="grid"></div>
   </section>
@@ -385,7 +411,7 @@ export const BROWSER_HTML = `<!DOCTYPE html>
 
 <script>
 // ─── 配置 ───
-// 同源调用：<UI域名>/api/*，CF Access cookie 自动携带
+// 同源调用：files.supertato.top/api/*，CF Access cookie 自动携带
 const API_BASE = location.origin;
 let TOKEN = localStorage.getItem('r2_token') || '';
 
@@ -449,6 +475,8 @@ if (!TOKEN && !HAS_ACCESS) {
 // ─── 状态 ───
 let currentPrefix = '';
 let searchQuery = '';
+let VIEW_MODE = localStorage.getItem('r2_view') || 'grid';
+window.setViewMode = (m) => { VIEW_MODE = m; localStorage.setItem('r2_view', m); document.getElementById('view-grid').classList.toggle('active', m==='grid'); document.getElementById('view-list').classList.toggle('active', m==='list'); loadList(currentPrefix); };
 
 // ─── API ───
 async function api(path, opts = {}) {
@@ -524,6 +552,7 @@ async function loadList(prefix) {
     if (objs.length === 0) {
       grid.innerHTML = '<div class="empty" style="grid-column:1/-1"><div class="big">🪣</div>' + (searchQuery ? '没有匹配的文件' : '此目录为空') + '</div>';
     } else {
+      grid.className = VIEW_MODE === 'list' ? 'grid list' : 'grid';
       grid.innerHTML = objs.map(o => {
         const ic = fileIcon(o.key, o.httpMetadata.contentType);
         const name = o.key.split('/').pop();
@@ -895,6 +924,10 @@ document.addEventListener('keydown', e => {
 nav('');
 loadCounts();
 loadUsage();
+document.getElementById('view-grid').classList.toggle('active', VIEW_MODE === 'grid');
+document.getElementById('view-list').classList.toggle('active', VIEW_MODE === 'list');
+document.getElementById('view-grid').onclick = () => window.setViewMode('grid');
+document.getElementById('view-list').onclick = () => window.setViewMode('list');
 
 // ─── PWA Service Worker 注册 ───
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
