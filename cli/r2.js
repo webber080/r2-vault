@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 
-const SECRETS_PATH = process.env.R2_TOKEN_FILE || path.join(os.homedir(), '.r2-vault', 'token');
+const SECRETS_PATH = process.env.R2_TOKEN_FILE || resolve(os.homedir(), '.r2-vault', 'token');
 const API_BASE = process.env.R2_BASE || '';  // 例如 https://r2.yourdomain.com
 const UI_URL = process.env.R2_UI || '';      // 例如 https://files.yourdomain.com
 
