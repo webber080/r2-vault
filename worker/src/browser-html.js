@@ -172,9 +172,9 @@ export const BROWSER_HTML = `<!DOCTYPE html>
     text-transform: uppercase; letter-spacing: .04em;
     cursor: default; user-select: none;
   }
-  .list-header .col { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 0; }
+  .list-header .col { display: flex; align-items: center; gap: 4px; cursor: pointer; padding: 4px 0; white-space: nowrap; overflow: hidden; }
   .list-header .col:hover { color: var(--accent); }
-  .list-header .col .arrow { font-size: 9px; opacity: .6; }
+  .list-header .col .arrow { font-size: 9px; opacity: .6; flex: none; }
   .list-header .col.active { color: var(--accent); }
   .list-header .col.right { justify-content: flex-end; text-align: right; }
   .grid.list { padding-top: 6px; }
@@ -190,8 +190,8 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   /* 列表模式触屏长按 60ms 提示选中 */
   .grid.list .card.press { background: #e9efff; }
 
-  @media (max-width: 720px) {
-    /* 手机端保留大小列，隐藏类型列；时间用紧凑格式 */
+  @media (max-width: 900px) {
+    /* 手机/平板端保留大小列，隐藏类型列；时间用紧凑格式。放宽断点避免大屏/横屏 5 列挤压致列头换行 */
     .list-header, .grid.list .card { grid-template-columns: 24px minmax(60px, 1fr) 78px 62px; gap: 8px; padding: 8px 10px; }
     .list-header .col.type, .grid.list .card .col.type { display: none; }
     .list-header .col.size, .grid.list .card .col.size { min-width: 56px; }
@@ -635,7 +635,7 @@ function formatDate(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   const pad = n => String(n).padStart(2, '0');
-  const compact = window.innerWidth <= 720;
+  const compact = window.innerWidth <= 900;
   const ym = compact
     ? pad(d.getMonth() + 1) + '-' + pad(d.getDate())
     : d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
@@ -991,9 +991,8 @@ function showContextMenu(x, y, key) {
       else if (act === 'delete') deleteSelected();
     };
   });
-  // 点击外部关闭
+  // 点击外部关闭（统一走全局处理器，见下方 handleGlobalClick）
   setTimeout(() => {
-    document.addEventListener('click', hideContextMenu, { once: true });
     document.addEventListener('contextmenu', hideContextMenu, { once: true });
   }, 10);
 }
@@ -1001,6 +1000,18 @@ function hideContextMenu() {
   const m = document.getElementById('ctxMenu');
   if (m) m.remove();
 }
+// 全局空白点击：点击卡片/工具条/菜单之外的区域 → 关闭菜单 + 清除选中（含工具条）
+function handleGlobalClick(e) {
+  const t = e.target;
+  // 点击在卡片内部：不干扰（有独立 onClick/oncontextmenu）
+  if (t.closest('.card')) { hideContextMenu(); return; }
+  // 点击在工具条/菜单内部：不清除选中
+  if (t.closest('.selection-bar') || t.closest('.context-menu')) return;
+  // 其余：关闭菜单 + 清除选中
+  hideContextMenu();
+  clearSelection();
+}
+document.addEventListener('click', handleGlobalClick);
 // 触屏长按 = 右键
 function onTouchStart(e, key) {
   pressTimer = setTimeout(() => {
