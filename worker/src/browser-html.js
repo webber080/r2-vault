@@ -191,9 +191,10 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   .grid.list .card.press { background: #e9efff; }
 
   @media (max-width: 720px) {
-    .list-header, .grid.list .card { grid-template-columns: 24px minmax(80px, 1fr) 90px; gap: 8px; padding: 8px 10px; }
-    .list-header .col.type, .grid.list .card .col.type,
-    .list-header .col.size, .grid.list .card .col.size { display: none; }
+    /* 手机端保留大小列，隐藏类型列；时间用紧凑格式 */
+    .list-header, .grid.list .card { grid-template-columns: 24px minmax(60px, 1fr) 78px 62px; gap: 8px; padding: 8px 10px; }
+    .list-header .col.type, .grid.list .card .col.type { display: none; }
+    .list-header .col.size, .grid.list .card .col.size { min-width: 56px; }
   }
   /* grid 模式下也支持选中态（点击 = 预览不变，selected 加边框提示） */
   .grid:not(.list) .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,109,245,.18); }
@@ -250,7 +251,7 @@ export const BROWSER_HTML = `<!DOCTYPE html>
     font-size: 38px; color: var(--muted); overflow: hidden;
   }
   .card .icon-wrap img { width: 100%; height: 100%; object-fit: cover; }
-  .card .name { font-weight: 600; font-size: 13px; word-break: break-all; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
+  .card .name { font-weight: 600; font-size: 13px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
   .card .meta { font-size: 11px; color: var(--muted); font-family: var(--mono); display: flex; justify-content: space-between; margin-top: 5px; }
   .card .actions {
     position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;
@@ -585,9 +586,9 @@ function fileIcon(key, ct) {
   if (/\\.(xlsx?|numbers)$/.test(k)) return '📗';
   return '📄';
 }
-function humanType(ct) {
+function humanType(key, ct) {
+  // 先用 R2 元数据 content-type；缺失时用文件扩展名兜底推断（R2 上传常不设 MIME）
   ct = (ct || '').toLowerCase();
-  if (!ct) return '';
   const map = {
     'image/jpeg': 'JPEG 图片', 'image/jpg': 'JPEG 图片', 'image/png': 'PNG 图片',
     'image/gif': 'GIF 图片', 'image/webp': 'WebP 图片', 'image/svg+xml': 'SVG 矢量图', 'image/bmp': 'BMP 图片', 'image/x-icon': '图标',
@@ -598,9 +599,30 @@ function humanType(ct) {
     'text/html': 'HTML 网页', 'text/plain': '纯文本', 'text/markdown': 'Markdown 文本',
     'video/mp4': 'MP4 视频', 'video/webm': 'WebM 视频', 'video/quicktime': 'MOV 视频',
     'audio/mpeg': 'MP3 音频', 'audio/mp4': 'M4A 音频', 'audio/wav': 'WAV 音频', 'audio/flac': 'FLAC 音频', 'audio/ogg': 'OGG 音频',
-    'application/javascript': 'JavaScript', 'application/x-python': 'Python 脚本', 'application/octet-stream': '二进制',
+    'application/javascript': 'JavaScript', 'application/x-python': 'Python 脚本',
   };
-  return map[ct] || ct.split('/').pop().toUpperCase();
+  if (ct && map[ct]) return map[ct];
+  // 扩展名兜底
+  const k = (key || '').toLowerCase();
+  const typeByExt = {
+    'jpg': 'JPEG 图片', 'jpeg': 'JPEG 图片', 'png': 'PNG 图片', 'gif': 'GIF 图片', 'webp': 'WebP 图片', 'svg': 'SVG 矢量图', 'bmp': 'BMP 图片', 'ico': '图片',
+    'pdf': 'PDF 文档',
+    'zip': 'ZIP 压缩包', 'tar': 'TAR 压缩包', 'gz': 'GZ 压缩包', '7z': '7Z 压缩包', 'rar': 'RAR 压缩包',
+    'json': 'JSON 数据',
+    'csv': 'CSV 表格', 'tsv': 'TSV 表格', 'xlsx': 'Excel 表格', 'xls': 'Excel 表格',
+    'html': 'HTML 网页', 'htm': 'HTML 网页', 'md': 'Markdown 文本', 'txt': '纯文本', 'log': '日志文本',
+    'mp4': 'MP4 视频', 'webm': 'WebM 视频', 'mov': 'MOV 视频', 'avi': 'AVI 视频', 'mkv': 'MKV 视频',
+    'mp3': 'MP3 音频', 'm4a': 'M4A 音频', 'wav': 'WAV 音频', 'flac': 'FLAC 音频', 'ogg': 'OGG 音频',
+    'js': 'JavaScript', 'mjs': 'JavaScript', 'ts': 'TypeScript', 'py': 'Python 脚本', 'sh': 'Shell 脚本', 'rs': 'Rust', 'go': 'Go', 'java': 'Java', 'c': 'C 源码', 'cpp': 'C++', 'h': '头文件',
+    'doc': 'Word 文档', 'docx': 'Word 文档', 'pages': 'Pages 文档',
+    'ppt': 'PPT 演示', 'pptx': 'PPT 演示', 'key': 'Keynote',
+    'parquet': 'Parquet 数据', 'sql': 'SQL', 'yaml': 'YAML', 'yml': 'YAML', 'toml': 'TOML', 'xml': 'XML', 'ini': '配置',
+    'apk': 'APK 应用', 'dmg': '磁盘镜像', 'iso': '系统镜像', 'exe': '可执行文件',
+  };
+  const ext = k.split('.').pop();
+  if (ext && typeByExt[ext]) return typeByExt[ext];
+  if (ct && ct.split('/').pop()) return ct.split('/').pop().toUpperCase();
+  return ext ? ext.toUpperCase() : '文件';
 }
 function humanSize(n) {
   if (n < 1024) return n + ' B';
@@ -609,11 +631,15 @@ function humanSize(n) {
   return (n/1073741824).toFixed(2) + ' GB';
 }
 function formatDate(iso) {
-  // Windows Explorer 风格：YYYY-MM-DD HH:MM
+  // Windows Explorer 风格：桌面 YYYY-MM-DD HH:MM，移动端紧凑 MM-DD HH:MM
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   const pad = n => String(n).padStart(2, '0');
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  const compact = window.innerWidth <= 720;
+  const ym = compact
+    ? pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+    : d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  return ym + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 function humanDate(iso) {
   const d = new Date(iso);
@@ -671,7 +697,10 @@ async function loadList(prefix) {
       '</div>';
       const rows = objs.map(o => {
         const ic = fileIcon(o.key, o.httpMetadata.contentType);
-        const icon = (typeof ic === 'string') ? ic : '🖼';
+        // 图片类型：显示缩略图（与平铺模式一致）；其他类型用 emoji
+        const icon = (typeof ic === 'string')
+          ? ic
+          : '<img src="' + rawUrl(o.key, '&inline=1') + '" loading="lazy" alt="">';
         const name = o.key.split('/').pop();
         const sel = selectedKeys.has(o.key) ? ' selected' : '';
         return '<div class="card' + sel + '" tabindex="0" data-key="' + esc(o.key) + '"' +
@@ -684,7 +713,7 @@ async function loadList(prefix) {
           '<div class="icon-wrap">' + icon + '</div>' +
           '<div class="name" title="' + esc(o.key) + '">' + esc(name) + '</div>' +
           '<div class="col">' + formatDate(o.uploaded) + '</div>' +
-          '<div class="col type right">' + esc(humanType(o.httpMetadata.contentType)) + '</div>' +
+          '<div class="col type right">' + esc(humanType(o.key, o.httpMetadata.contentType)) + '</div>' +
           '<div class="col size right">' + humanSize(o.size) + '</div>' +
         '</div>';
       }).join('');
@@ -897,7 +926,7 @@ function renderSelectionBar() {
 }
 function parseSizeText(t) {
   t = (t || '').trim();
-  const m = t.match(/([\d.]+)\s*(B|KB|MB|GB)/);
+  const m = t.match(/([\\d.]+)\\s*(B|KB|MB|GB)/);
   if (!m) return 0;
   const n = parseFloat(m[1]);
   const u = m[2];
