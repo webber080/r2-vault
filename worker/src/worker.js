@@ -25,6 +25,137 @@
 
 import { BROWSER_HTML } from './browser-html.js';
 
+// PWA manifest：安卓 Chrome「安装到主屏幕」后成为独立 App（全屏、有图标）
+const MANIFEST_JSON = JSON.stringify({
+  name: 'R2 Vault',
+  short_name: 'R2 Vault',
+  description: 'Cloudflare R2 personal vault',
+  start_url: '/',
+  scope: '/',
+  display: 'standalone',
+  orientation: 'portrait',
+  background_color: '#f4f6fb',
+  theme_color: '#4f6df5',
+  icons: [
+    { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+    { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+  ],
+});
+
+// Service Worker：App Shell 离线缓存。
+// HTML no-store（保证更新及时），静态图标缓存；API 请求永不缓存。
+const SW_JS = `
+const SHELL_CACHE = 'r2vault-shell-v1';
+const SHELL_ASSETS = ['/icon-192.png', '/icon-512.png', '/manifest.webmanifest'];
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(SHELL_CACHE).then((c) => c.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== SHELL_CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()),
+  );
+});
+self.addEventListener('fetch', (e) => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.pathname.startsWith('/api/')) return; // API 永不拦截
+  if (SHELL_ASSETS.includes(url.pathname)) {
+    e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request)));
+  }
+});
+`;
+
+// 应用图标（渐变圆角方块 + 白色箱体，程序化 PNG 生成太重，用 SVG 转 PNG 不行——
+// 直接内嵌两枚 base64 PNG。这里用最小合法 PNG：渐变背景 + 简单图形由前端 canvas 生成不可行，
+// 改为纯色圆角图标（视觉干净即可）。
+// 生成方式：单色 #4f6df5 背景 + 白色居中方块，像素数据程序化构造。
+function makeIconPng(size) {
+  const px = [];
+  const r = size * 0.22; // 圆角
+  for (let y = 0; y < size; y++) {
+    px.push(0); // filter: none
+    for (let x = 0; x < size; x++) {
+      // 圆角判断
+      const cx = Math.min(x, size - 1 - x), cy = Math.min(y, size - 1 - y);
+      const inside = cx + cy >= r || (cx >= r || cy >= r) || true;
+      // 简化：整个方形填充即可（maskable 图标需要满版背景）
+      // 渐变：从左上 #6a8bff 到右下 #4f6df5
+      const t = (x + y) / (2 * size);
+      const R = Math.round(0x6a + (0x4f - 0x6a) * t);
+      const G = Math.round(0x8b + (0x6d - 0x8b) * t);
+      const B = Math.round(0xff + (0xf5 - 0xff) * t);
+      // 中央白色"箱体"图形：一个圆角方形轮廓（模拟存储箱）
+      const boxS = size * 0.34, boxX0 = (size - boxS) / 2, boxY0 = (size - boxS * 0.78) / 2 + size * 0.03, boxY1 = boxY0 + boxS * 0.78;
+      const inBox = x >= boxX0 && x <= boxX0 + boxS && y >= boxY0 && y <= boxY1;
+      // 箱盖：顶部 1/3 高度，白色实心
+      const lidY1 = boxY0 + boxS * 0.26;
+      const lidLine = boxY0 <= y && y <= boxY0 + size * 0.035;
+      // 箱体边框：左右与底部 3px 线
+      const border = size * 0.032;
+      const onFrame = inBox && (
+        y <= boxY0 + border ||                                    // 顶
+        x <= boxX0 + border || x >= boxX0 + boxS - border ||       // 左右
+        y >= boxY1 - border                                        // 底
+      );
+      // 锁孔：中央小方块
+      const keyX0 = size/2 - size*0.075, keyX1 = size/2 + size*0.075;
+      const keyY0 = boxY0 + boxS*0.42, keyY1 = keyY0 + size*0.15;
+      const onKey = x >= keyX0 && x <= keyX1 && y >= keyY0 && y <= keyY1;
+      if (onFrame || onKey) px.push(255, 255, 255, 255);
+      else px.push(R, G, B, 255);
+    }
+  }
+  const raw = new Uint8Array(px);
+  // PNG 编码（IHDR + IDAT zlib stored blocks + IEND），CRC 手算
+  const crcTable = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    crcTable[n] = c;
+  }
+  function crc32(buf) {
+    let c = 0xffffffff;
+    for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+  function chunk(type, data) {
+    const out = new Uint8Array(12 + data.length);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, data.length);
+    for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+    out.set(data, 8);
+    dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  }
+  const ihdr = new Uint8Array(13);
+  const dv = new DataView(ihdr.buffer);
+  dv.setUint32(0, size); dv.setUint32(4, size);
+  ihdr[8] = 8; ihdr[9] = 6; // 8bit RGBA
+  // zlib: stored (uncompressed) deflate blocks
+  const maxBlock = 65535;
+  const nBlocks = Math.ceil(raw.length / maxBlock);
+  const z = new Uint8Array(2 + raw.length + nBlocks * 5 + 4);
+  let zi = 0;
+  z[zi++] = 0x78; z[zi++] = 0x01;
+  for (let i = 0; i < nBlocks; i++) {
+    const seg = raw.subarray(i * maxBlock, (i + 1) * maxBlock);
+    const last = i === nBlocks - 1 ? 1 : 0;
+    z[zi++] = last;
+    z[zi++] = seg.length & 0xff; z[zi++] = seg.length >> 8;
+    z[zi++] = ~seg.length & 0xff; z[zi++] = (~seg.length >> 8) & 0xff;
+    z.set(seg, zi); zi += seg.length;
+  }
+  const adler = (() => {
+    let a = 1, b = 0;
+    for (const byte of raw) { a = (a + byte) % 65521; b = (b + a) % 65521; }
+    return ((b << 16) | a) >>> 0;
+  })();
+  new DataView(z.buffer).setUint32(zi, adler);
+  return new Uint8Array([
+    ...[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+    ...chunk('IHDR', ihdr), ...chunk('IDAT', z), ...chunk('IEND', new Uint8Array(0)),
+  ]);
+}
+
 const TEMP_PREFIX = 'temp/';
 const TEMP_MAX_AGE_DAYS = 14;
 const LIST_PAGE_SIZE = 1000;
@@ -115,11 +246,19 @@ async function timingSafeEqualStr(a, b) {
   return diff === 0;
 }
 
-async function checkAgentAuth(request, env) {
+async function checkAgentAuth(request, env, url) {
+  // Bearer 头优先；?token= 兜底（仅用于 <img>/<embed> 等无法自定义头部的标签，
+  // 且仅限 GET 类接口使用——写操作必须走头）。
+  let candidate = null;
   const h = request.headers.get('Authorization') || '';
   const m = h.match(/^Bearer\s+(.+)$/i);
-  if (!m || !env.AGENT_TOKEN) return false;
-  return timingSafeEqualStr(m[1], env.AGENT_TOKEN);
+  if (m) candidate = m[1];
+  else if (url && ['GET', 'HEAD'].includes(request.method)) {
+    const q = url.searchParams.get('token');
+    if (q) candidate = q;
+  }
+  if (!candidate || !env.AGENT_TOKEN) return false;
+  return timingSafeEqualStr(candidate, env.AGENT_TOKEN);
 }
 
 // ── Cloudflare Access JWT 验证 ──
@@ -267,6 +406,25 @@ export default {
       });
     }
 
+    // ──────────────── PWA 资产 ────────────────
+    if (path === '/manifest.webmanifest') {
+      return new Response(MANIFEST_JSON, {
+        headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'public, max-age=3600' },
+      });
+    }
+    if (path === '/sw.js') {
+      return new Response(SW_JS, {
+        headers: { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-store' },
+      });
+    }
+    const iconMatch = path.match(/^\/icon-(192|512)\.png$/);
+    if (iconMatch) {
+      // CSP 下 <link rel=icon> 也 OK；PNG 是构建时程序化生成，缓存 1 天
+      return new Response(makeIconPng(parseInt(iconMatch[1], 10)), {
+        headers: { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=86400' },
+      });
+    }
+
     // /api/whoami —— 诊断端点：放在鉴权前，报告请求里各凭证的存在性与 JWT 校验结果（不泄露密钥值）
     if (path === '/api/whoami' && request.method === 'GET') {
       const jwt = request.headers.get('cf-access-jwt-assertion');
@@ -290,7 +448,7 @@ export default {
 
     // ──────────────── /api/* ────────────────
     if (path.startsWith('/api/')) {
-      const agentOk = await checkAgentAuth(request, env);
+      const agentOk = await checkAgentAuth(request, env, url);
       const accessOk = agentOk ? false : await checkAccessAuth(request, env);
       if (!agentOk && !accessOk) return err('Unauthorized', 401);
 

@@ -8,7 +8,14 @@ export const BROWSER_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0f172a">
+<meta name="theme-color" content="#4f6df5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="R2 Vault">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <title>R2 Vault</title>
 <style>
   :root {
@@ -378,7 +385,7 @@ export const BROWSER_HTML = `<!DOCTYPE html>
 
 <script>
 // ─── 配置 ───
-// 同源调用：<UI域名>/api/*，CF Access cookie 自动携带
+// 同源调用：files.supertato.top/api/*，CF Access cookie 自动携带
 const API_BASE = location.origin;
 let TOKEN = localStorage.getItem('r2_token') || '';
 
@@ -416,6 +423,8 @@ let searchQuery = '';
 
 // ─── API ───
 async function api(path, opts = {}) {
+  opts.headers = Object.assign({}, opts.headers);
+  if (TOKEN && !opts.headers['Authorization']) opts.headers['Authorization'] = 'Bearer ' + TOKEN;
   const r = await fetch(API_BASE + path, opts);
   if (!r.ok) {
     const t = await r.text();
@@ -490,7 +499,7 @@ async function loadList(prefix) {
         const ic = fileIcon(o.key, o.httpMetadata.contentType);
         const name = o.key.split('/').pop();
         const thumb = ic.type === 'img'
-          ? '<img src="' + API_BASE + '/api/raw?key=' + encodeURIComponent(o.key) + '&inline=1" loading="lazy" alt="">'
+          ? '<img src="' + rawUrl(o.key, '&inline=1') + '" loading="lazy" alt="">'
           : ic;
         return '<div class="card" tabindex="0" data-key="' + esc(o.key) + '" onclick="onCardClick(this.dataset.key)" onkeydown="if(event.key===\\'Enter\\')onCardClick(this.dataset.key)">' +
           '<div class="icon-wrap">' + thumb + '</div>' +
@@ -510,6 +519,11 @@ async function loadList(prefix) {
   } finally {
     showLoading(false);
   }
+}
+function rawUrl(key, extra) {
+  let u = API_BASE + '/api/raw?key=' + encodeURIComponent(key) + (extra || '');
+  if (TOKEN) u += '&token=' + encodeURIComponent(TOKEN);
+  return u;
 }
 function jsq(s) { return s.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'"); }
 
@@ -592,7 +606,7 @@ function guessContentType(key) {
 }
 function downloadFile(key) {
   const a = document.createElement('a');
-  a.href = API_BASE + '/api/raw?key=' + encodeURIComponent(key) + '&download=1';
+  a.href = rawUrl(key, '&download=1');
   a.download = key.split('/').pop();
   document.body.appendChild(a);
   a.click();
@@ -613,7 +627,7 @@ async function deleteFile(key) {
 // ─── 预览 ───
 function openPreview(key, ct) {
   const root = document.getElementById('modal-root');
-  const url = API_BASE + '/api/raw?key=' + encodeURIComponent(key) + '&inline=1';
+  const url = rawUrl(key, '&inline=1');
   let body = '';
   if (ct.startsWith('image/')) body = '<img src="' + url + '" alt="">';
   else if (ct === 'application/pdf') body = '<embed src="' + url + '" type="application/pdf">';
@@ -852,6 +866,11 @@ document.addEventListener('keydown', e => {
 nav('');
 loadCounts();
 loadUsage();
+
+// ─── PWA Service Worker 注册 ───
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
 </script>
 </body>
 </html>`;
