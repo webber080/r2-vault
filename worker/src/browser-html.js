@@ -449,19 +449,25 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   <div class="scrim" id="scrim" onclick="toggleTree(false)"></div>
   <aside class="tree" id="tree">
     <div class="tree-section-title">分类</div>
-    <div class="tree-item active" data-prefix="" onclick="nav('')">
+    <div class="tree-item active" data-cat="all" onclick="navCat('all')">
       <span class="icon">🏠</span><span>全部</span><span class="count" id="count-all">–</span>
     </div>
-    <div class="tree-item" data-prefix="reports/" onclick="nav('reports/')">
-      <span class="icon">📊</span><span>reports</span><span class="count" id="count-reports">–</span>
+    <div class="tree-item" data-cat="doc" onclick="navCat('doc')">
+      <span class="icon">📄</span><span>文档</span><span class="count" id="count-doc">–</span>
     </div>
-    <div class="tree-item" data-prefix="datasets/" onclick="nav('datasets/')">
-      <span class="icon">🗄️</span><span>datasets</span><span class="count" id="count-datasets">–</span>
+    <div class="tree-item" data-cat="img" onclick="navCat('img')">
+      <span class="icon">🖼️</span><span>图片</span><span class="count" id="count-img">–</span>
     </div>
-    <div class="tree-item" data-prefix="downloads/" onclick="nav('downloads/')">
-      <span class="icon">⬇️</span><span>downloads</span><span class="count" id="count-downloads">–</span>
+    <div class="tree-item" data-cat="data" onclick="navCat('data')">
+      <span class="icon">🗄️</span><span>数据</span><span class="count" id="count-data">–</span>
     </div>
-    <div class="tree-item" data-prefix="temp/" onclick="nav('temp/')">
+    <div class="tree-item" data-cat="zip" onclick="navCat('zip')">
+      <span class="icon">🗜️</span><span>压缩包</span><span class="count" id="count-zip">–</span>
+    </div>
+    <div class="tree-item" data-cat="other" onclick="navCat('other')">
+      <span class="icon">📦</span><span>其他</span><span class="count" id="count-other">–</span>
+    </div>
+    <div class="tree-item" data-cat="temp" onclick="navCat('temp')">
       <span class="icon">🗑️</span><span>temp · 14天清理</span><span class="count" id="count-temp">–</span>
     </div>
     <div class="tree-section-title" style="margin-top:14px">存储</div>
@@ -567,14 +573,15 @@ if (!TOKEN && !HAS_ACCESS) {
 }
 
 // ─── 状态 ───
-let currentPrefix = '';
+let currentPrefix = '';   // 真实目录前缀（temp/ 等）
+let currentCat = 'all';   // 虚拟分类：all|doc|img|data|zip|other|temp
 let searchQuery = '';
 let VIEW_MODE = localStorage.getItem('r2_view') || 'grid';
 let SORT_BY = localStorage.getItem('r2_sort_by') || 'date';  // 'name'|'date'|'size'|'type'
 let SORT_DIR = localStorage.getItem('r2_sort_dir') || 'desc'; // 'asc'|'desc'
 let selectedKeys = new Set();  // 多选
 let pressTimer = null;  // 长按检测
-window.setViewMode = (m) => { VIEW_MODE = m; localStorage.setItem('r2_view', m); document.getElementById('view-grid').classList.toggle('active', m==='grid'); document.getElementById('view-list').classList.toggle('active', m==='list'); loadList(currentPrefix); };
+window.setViewMode = (m) => { VIEW_MODE = m; localStorage.setItem('r2_view', m); document.getElementById('view-grid').classList.toggle('active', m==='grid'); document.getElementById('view-list').classList.toggle('active', m==='list'); loadList(currentCat); };
 
 // ─── API ───
 async function api(path, opts = {}) {
@@ -589,6 +596,23 @@ async function api(path, opts = {}) {
 }
 
 // ─── 工具 ───
+// 虚拟分类：基于文件 key 和 content-type 实时归类（不迁移文件，AI 放哪都行）
+function fileCategory(key, ct) {
+  // temp 是真实目录前缀，优先识别
+  if (key.startsWith('temp/')) return 'temp';
+  const k = (key || '').toLowerCase();
+  const c = (ct || '').toLowerCase();
+  const ext = k.includes('.') ? k.split('.').pop() : '';
+  // 文档
+  if (c.startsWith('text/') || c.includes('pdf') || /\.(md|txt|log|pdf|docx?|pptx?|pages|key|rtf|html?|htm)$/.test(k)) return 'doc';
+  // 图片
+  if (c.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(k)) return 'img';
+  // 数据
+  if (c.includes('json') || c.includes('csv') || c.includes('excel') || /\.(json|csv|tsv|xlsx?|parquet|sql|yaml|yml|xml|toml|db|sqlite)$/.test(k)) return 'data';
+  // 压缩包
+  if (c.includes('zip') || c.includes('tar') || c.includes('gzip') || c.includes('7z') || /\.(zip|tar|gz|7z|rar|tgz)$/.test(k)) return 'zip';
+  return 'other';
+}
 function fileIcon(key, ct) {
   ct = (ct || '').toLowerCase();
   const k = key.toLowerCase();
@@ -684,11 +708,31 @@ function toast(msg, type) {
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ─── 列表 ───
-async function loadList(prefix) {
+// 分页累计拉取某前缀下的全部对象（处理 R2 cursor 分页）
+async function loadAllWithPrefix(prefix) {
+  let all = [], cursor;
+  let guard = 0;
+  do {
+    const q = '/api/list?prefix=' + encodeURIComponent(prefix) + (cursor ? '&cursor=' + encodeURIComponent(cursor) : '');
+    const r = await api(q);
+    all = all.concat(r.objects || []);
+    cursor = r.cursor;
+    if (++guard > 20) break; // 防死循环
+  } while (cursor);
+  return all;
+}
+async function loadList(cat) {
+  const c = (cat !== undefined) ? cat : currentCat;
   showLoading(true);
   try {
-    const r = await api('/api/list?prefix=' + encodeURIComponent(prefix));
-    let objs = r.objects;
+    // temp 用真实目录前缀拉取；其他虚拟分类拉全量后前端按类型筛选
+    let objs;
+    if (c === 'temp') {
+      objs = await loadAllWithPrefix('temp/');
+    } else {
+      objs = await loadAllWithPrefix('');
+      if (c !== 'all') objs = objs.filter(o => fileCategory(o.key, o.httpMetadata.contentType) === c);
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       objs = objs.filter(o => o.key.toLowerCase().includes(q));
@@ -755,7 +799,7 @@ async function loadList(prefix) {
           else { SORT_BY = col; SORT_DIR = (col === 'name' || col === 'type') ? 'asc' : 'desc'; }
           localStorage.setItem('r2_sort_by', SORT_BY);
           localStorage.setItem('r2_sort_dir', SORT_DIR);
-          loadList(currentPrefix);
+          loadList(currentCat);
         });
       });
     } else {
@@ -783,7 +827,8 @@ async function loadList(prefix) {
           '</div></div>';
       }).join('');
     }
-    document.getElementById('current-path').textContent = prefix ? (prefix.replace(/\\/$/, '')) : '全部';
+    const catNames = { all: '全部', doc: '文档', img: '图片', data: '数据', zip: '压缩包', other: '其他', temp: 'temp · 14天清理' };
+    document.getElementById('current-path').textContent = catNames[c] || '全部';
     document.getElementById('current-meta').textContent =
       objs.length + ' 个文件 · 共 ' + humanSize(objs.reduce((s,o)=>s+o.size,0));
   } catch (e) {
@@ -801,12 +846,27 @@ function jsq(s) { return s.replace(/\\\\/g,'\\\\\\\\').replace(/'/g,"\\\\'"); }
 
 // ─── 计数 ───
 async function loadCounts() {
-  const cats = { '': 'count-all', 'reports/': 'count-reports', 'datasets/': 'count-datasets', 'downloads/': 'count-downloads', 'temp/': 'count-temp' };
-  for (const [p, id] of Object.entries(cats)) {
-    try {
-      const r = await api('/api/list?prefix=' + encodeURIComponent(p));
-      document.getElementById(id).textContent = r.count;
-    } catch { document.getElementById(id).textContent = '?'; }
+  // 拉全量一次，前端按虚拟分类统计
+  try {
+    const all = await loadAllWithPrefix('');
+    const map = { all: 0, doc: 0, img: 0, data: 0, zip: 0, other: 0, temp: 0 };
+    for (const o of all) {
+      const c = fileCategory(o.key, o.httpMetadata.contentType);
+      map[c] = (map[c] || 0) + 1;
+      map.all += 1;  // "全部"含所有文件（含 temp，因为都在存储里）
+    }
+    document.getElementById('count-all').textContent = map.all;
+    document.getElementById('count-doc').textContent = map.doc;
+    document.getElementById('count-img').textContent = map.img;
+    document.getElementById('count-data').textContent = map.data;
+    document.getElementById('count-zip').textContent = map.zip;
+    document.getElementById('count-other').textContent = map.other;
+    document.getElementById('count-temp').textContent = map.temp;
+  } catch { 
+    ['all','doc','img','data','zip','other','temp'].forEach(id => {
+      const el = document.getElementById('count-' + id);
+      if (el) el.textContent = '?';
+    });
   }
 }
 
@@ -829,18 +889,31 @@ async function loadUsage() {
 }
 
 // ─── 导航 ───
+// 虚拟分类导航（点击侧栏分类）
+function navCat(cat) {
+  currentCat = cat;
+  currentPrefix = (cat === 'temp') ? 'temp/' : '';
+  document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+  const active = document.querySelector('.tree-item[data-cat="' + cat + '"]');
+  if (active) active.classList.add('active');
+  renderBreadcrumb(currentPrefix);
+  loadList(cat);
+  toggleTree(false);
+}
+// 兼容：目录导航（访问具体目录前缀时用，breadcrumb 回退用）
 function nav(prefix) {
   currentPrefix = prefix;
+  currentCat = 'all';
   document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
-  const active = document.querySelector('.tree-item[data-prefix="' + prefix + '"]');
+  const active = document.querySelector('.tree-item[data-cat="all"]');
   if (active) active.classList.add('active');
   renderBreadcrumb(prefix);
-  loadList(prefix);
+  loadList('all');
   toggleTree(false);
 }
 function renderBreadcrumb(prefix) {
   const parts = prefix.split('/').filter(Boolean);
-  let html = '<span class="crumb" onclick="nav(\\'\\')">🏠</span>';
+  let html = '<span class="crumb" onclick="navCat(\\'all\\')">🏠</span>';
   let acc = '';
   for (const p of parts) {
     acc += p + '/';
@@ -973,7 +1046,7 @@ async function deleteSelected() {
     catch (e) { toast('删除失败：' + k + ' ' + e.message, 'err'); }
   }
   selectedKeys.clear();
-  await Promise.all([loadList(currentPrefix), loadCounts(), loadUsage()]);
+  await Promise.all([loadList(currentCat), loadCounts(), loadUsage()]);
   showLoading(false);
 }
 let lastSelectedKey = null;
@@ -1087,7 +1160,7 @@ async function deleteFile(key) {
   try {
     await api('/api/delete?key=' + encodeURIComponent(key), { method: 'DELETE' });
     toast('已删除', 'ok');
-    await Promise.all([loadList(currentPrefix), loadCounts(), loadUsage()]);
+    await Promise.all([loadList(currentCat), loadCounts(), loadUsage()]);
   } catch (e) {
     toast(e.message, 'err');
   } finally { showLoading(false); }
@@ -1116,7 +1189,7 @@ function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
 function showLoading(on) { document.getElementById('loading').style.display = on ? 'flex' : 'none'; }
 function refreshAll() {
-  Promise.all([loadList(currentPrefix), loadCounts(), loadUsage()]);
+  Promise.all([loadList(currentCat), loadCounts(), loadUsage()]);
   toast('已刷新', 'ok');
 }
 
@@ -1128,23 +1201,23 @@ const PARALLEL_MAX = 3;
 let activeCount = 0;
 
 function targetCategory() {
-  const m = currentPrefix.match(/^(reports|datasets|downloads|temp)\\//);
-  return m ? m[1] : 'reports';
+  // 扁平存储：默认放根目录；仅在 temp 分类下上传到 temp/
+  return currentCat === 'temp' ? 'temp/' : '';
 }
 
 // 入口 1：上传弹窗
 function openUpload() {
   const root = document.getElementById('modal-root');
-  const cats = ['reports', 'datasets', 'downloads', 'temp'];
   root.innerHTML =
     '<div class="modal-bg" onclick="if(event.target===this)closeModal()">' +
       '<div class="modal"><h3>上传文件</h3>' +
-        '<p style="margin:-8px 0 14px;font-size:12px;color:var(--muted)">支持多选。上传在后台进行，可以继续浏览。</p>' +
-        '<div class="field"><label>分类</label><select id="up-cat">' +
-          cats.map(c => '<option value="' + c + '"' + (c === targetCategory() ? ' selected' : '') + '>' + c + '</option>').join('') +
+        '<p style="margin:-8px 0 14px;font-size:12px;color:var(--muted)">默认存根目录（扁平），AI 也会自动归类显示。支持多选，后台上传。</p>' +
+        '<div class="field"><label>目标位置</label><select id="up-cat">' +
+          '<option value=""' + (targetCategory() === '' ? ' selected' : '') + '>根目录（推荐，自动归类）</option>' +
+          '<option value="temp/"' + (targetCategory() === 'temp/' ? ' selected' : '') + '>temp（14天清理）</option>' +
         '</select></div>' +
-        '<div class="field"><label>Key 前缀覆盖（可选，高级）</label>' +
-          '<input id="up-key" placeholder="留空 = 分类/文件名" style="font-family:var(--mono);font-size:12px"></div>' +
+        '<div class="field"><label>自定义 Key（可选，高级）</label>' +
+          '<input id="up-key" placeholder="留空 = 文件名" style="font-family:var(--mono);font-size:12px"></div>' +
         '<div class="field"><label>文件（可多选）</label><input type="file" id="up-file" multiple></div>' +
         '<div class="row"><button onclick="closeModal()">取消</button>' +
         '<button class="primary" onclick="doUpload()">加入上传队列</button></div>' +
@@ -1157,9 +1230,9 @@ function doUpload() {
   const files = [...document.getElementById('up-file').files];
   if (files.length === 0) { toast('请选择文件', 'err'); return; }
   files.forEach((f, i) => {
-    // 多文件 + 自定义 key：仅对单文件生效，多文件时忽略前缀覆盖避免重名
+    // 自定义 key 仅对单文件生效，多文件忽略避免重名
     const custom = files.length === 1 && keyInput ? keyInput : '';
-    const key = custom || (cat + '/' + f.name);
+    const key = custom || (cat + f.name);
     enqueueUpload(f, key);
   });
   closeModal();
@@ -1169,8 +1242,8 @@ function doUpload() {
 // 入口 2：拖拽 / 粘贴
 function enqueueFiles(files) {
   const cat = targetCategory();
-  [...files].forEach(f => enqueueUpload(f, cat + '/' + f.name));
-  toast(files.length + ' 个文件已加入队列（' + cat + '/）', 'ok');
+  [...files].forEach(f => enqueueUpload(f, cat + f.name));
+  toast(files.length + ' 个文件已加入队列', 'ok');
 }
 
 function enqueueUpload(file, key) {
@@ -1207,7 +1280,7 @@ function startUpload(u) {
     if (xhr.status >= 200 && xhr.status < 300) {
       u.state = 'done'; u.loaded = u.size;
       // 上传完成后刷新当前视图（若用户还在对应目录）
-      if (currentPrefix === '' || u.key.startsWith(currentPrefix)) loadList(currentPrefix);
+      if (currentPrefix === '' || u.key.startsWith(currentPrefix)) loadList(currentCat);
       loadCounts(); loadUsage();
     } else {
       u.state = 'err';
@@ -1300,7 +1373,7 @@ document.addEventListener('dragenter', (e) => {
   if (![...e.dataTransfer.types].includes('Files')) return;
   dragDepth++;
   document.getElementById('dropzone').classList.add('show');
-  document.getElementById('dzTarget').textContent = targetCategory();
+  document.getElementById('dzTarget').textContent = targetCategory() === 'temp/' ? 'temp（14天清理）' : '根目录';
 });
 document.addEventListener('dragleave', () => {
   dragDepth = Math.max(0, dragDepth - 1);
@@ -1323,7 +1396,7 @@ document.addEventListener('paste', (e) => {
 let searchTimer;
 document.getElementById('search').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => { searchQuery = e.target.value.trim(); loadList(currentPrefix); }, 220);
+  searchTimer = setTimeout(() => { searchQuery = e.target.value.trim(); loadList(currentCat); }, 220);
 });
 
 // Esc 关闭模态/抽屉
@@ -1332,7 +1405,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ─── 启动 ───
-nav('');
+navCat('all');
 loadCounts();
 loadUsage();
 document.getElementById('view-grid').classList.toggle('active', VIEW_MODE === 'grid');
