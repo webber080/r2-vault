@@ -317,6 +317,24 @@ export const BROWSER_HTML = `<!DOCTYPE html>
   #preview-body { flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; background: #f2f4f9; display: flex; }
   #preview-body img { max-width: 100%; max-height: 100%; margin: auto; object-fit: contain; }
   #preview-body iframe, #preview-body embed { width: 100%; height: 100%; border: none; background: #fff; }
+  /* 预览顶栏（手机全屏模式 / 桌面复用同结构） */
+  .modal .pv-top { display: flex; align-items: flex-start; gap: 10px; margin: -4px 0 12px; }
+  .modal .pv-top .pv-title { flex: 1; min-width: 0; }
+  .modal .pv-top h3 { margin: 0 0 2px; font-size: 15px; word-break: break-all; }
+  .modal .pv-top .key-line { margin: 0; font-size: 11px; }
+  .modal .pv-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+  .pvc { min-width: 38px; min-height: 38px; padding: 0 8px; border: 1px solid var(--border); border-radius: 9px;
+         background: #fbfcfe; font-size: 16px; cursor: pointer; color: var(--ink, #1c2540); }
+  .pvc:active { background: #eef1f8; }
+  /* 手机：预览弹层铺满整屏（modal-bg 蒙层去圆角去留白，modal 占满 100dvh） */
+  .modal-bg.pvfs { padding: 0; align-items: stretch; backdrop-filter: none; -webkit-backdrop-filter: none; background: #fff; }
+  .modal.pvfs {
+    width: 100%; height: 100dvh; max-height: none; border-radius: 0;
+    padding: calc(env(safe-area-inset-top) + 8px) 10px calc(env(safe-area-inset-bottom) + 8px);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .modal.pvfs .pv-top { margin: 0 0 8px; }
+  .modal.pvfs #preview-body { border-radius: 0; background: #fff; }
   @keyframes pop { from { opacity: 0; transform: scale(.96) translateY(8px); } to { opacity: 1; transform: none; } }
 
   .loading {
@@ -419,6 +437,11 @@ export const BROWSER_HTML = `<!DOCTYPE html>
     section.files { padding: 0 12px 40px; }
     #listHeader { margin: 0 -12px; padding: 0 12px; }
     .card .icon-wrap { height: 88px; font-size: 32px; }
+    /* 手机预览：顶栏按钮加大到 44px 触控目标，标题单行省略 */
+    .pvc { min-width: 44px; min-height: 44px; font-size: 18px; }
+    .modal.pvfs .pv-top h3 { font-size: 14px; margin: 0; }
+    .modal.pvfs .pv-top .key-line { display: none; }
+    .modal.pvfs .pv-actions { flex-direction: row; }
   }
   /* 小手机 ≤400：仅隐藏顶栏标题（卡片网格列宽由容器查询负责） */
   @media (max-width: 400px) {
@@ -968,8 +991,19 @@ function onFileDblClick(key) {
 }
 function openFile(key) {
   const ct = guessContentType(key);
+  if (ct === 'text/html' && isPhone()) { openHtmlView(key); return; } // 手机：HTML 直接进全屏查看器
   if (ct.startsWith('image/') || ct === 'application/pdf' || ct.startsWith('text/') || ct.startsWith('video/') || ct.startsWith('audio/')) openPreview(key, ct);
   else downloadFile(key);
+}
+// 手机 HTML 全屏查看器：整页跳转到 /htmlview（沙箱 iframe + 缩放控制）
+function openHtmlView(key) {
+  const u = new URL('/htmlview?key=' + encodeURIComponent(key), location.origin);
+  if (TOKEN) u.searchParams.set('token', TOKEN);
+  location.href = u.toString();
+}
+function isPhone() {
+  return Math.min(window.innerWidth, window.innerHeight) <= 560
+    || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 }
 function toggleSelect(key) {
   if (selectedKeys.has(key)) selectedKeys.delete(key);
@@ -1169,21 +1203,47 @@ async function deleteFile(key) {
 // ─── 预览 ───
 function openPreview(key, ct) {
   const root = document.getElementById('modal-root');
-  const url = rawUrl(key, '&inline=1');
+  const full = isPhone(); // 手机：预览 = 全屏（顶栏 56px + 关闭/刷新/浏览器打开/下载）
   let body = '';
-  if (ct.startsWith('image/')) body = '<img src="' + url + '" alt="">';
-  else if (ct === 'application/pdf') body = '<embed src="' + url + '" type="application/pdf">';
-  else body = '<iframe src="' + url + '"></iframe>';
+  if (ct.startsWith('image/')) body = '<img src="' + rawUrl(key, '&inline=1') + '" alt="">';
+  else if (ct === 'application/pdf') body = '<embed src="' + rawUrl(key, '&inline=1') + '" type="application/pdf">';
+  else if (ct === 'text/html') body = '<iframe src="' + htmlViewRaw(key) + '" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer"></iframe>';
+  else body = '<iframe src="' + rawUrl(key, '&inline=1') + '"></iframe>';
+  const barBtns =
+    '<button class="pvc" onclick="reloadPreview(this)" title="刷新">⟳</button>' +
+    (ct === 'text/html' ? '<button class="pvc" onclick="event.stopPropagation();openHtmlView(\\'' + jsq(key) + '\\')" title="全屏查看">⛶</button>' : '') +
+    (ct.startsWith('image/') || ct === 'application/pdf' || ct.startsWith('text/') || ct.startsWith('video/') || ct.startsWith('audio/') || ct === 'text/html'
+      ? '<button class="pvc" onclick="openRawTab(\\'' + jsq(key) + '\\',\\'' + jsq(ct) + '\\')" title="浏览器打开">⧉</button>' : '') +
+    '<button class="pvc" onclick="downloadFile(\\'' + jsq(key) + '\\')" title="下载">⬇</button>';
   root.innerHTML =
-    '<div class="modal-bg" onclick="if(event.target===this)closeModal()">' +
-      '<div class="modal wide">' +
-        '<h3 style="word-break:break-all;font-size:14px">' + esc(key.split('/').pop()) + '</h3>' +
-        '<div class="key-line">' + esc(key) + '</div>' +
+    '<div class="modal-bg' + (full ? ' pvfs' : '') + '" onclick="if(event.target===this)closeModal()">' +
+      '<div class="modal wide' + (full ? ' pvfs' : '') + '">' +
+        '<div class="pv-top">' +
+          '<div class="pv-title"><h3>' + esc(key.split('/').pop()) + '</h3>' +
+          '<div class="key-line">' + esc(key) + '</div></div>' +
+          '<div class="pv-actions">' + barBtns +
+          '<button class="pvc" onclick="closeModal()" title="关闭">✕</button></div>' +
+        '</div>' +
         '<div id="preview-body">' + body + '</div>' +
-        '<div class="row">' +
+        (full ? '' : '<div class="row">' +
           '<button class="spacer" onclick="downloadFile(\\'' + jsq(key) + '\\')">⬇ 下载</button>' +
           '<button onclick="closeModal()">关闭</button>' +
-        '</div></div></div>';
+        '</div>') +
+      '</div></div>';
+}
+// 沙箱 HTML 渲染专用 URL（带 htmlview 标记，Worker 才放行 inline + CSP sandbox）
+function htmlViewRaw(key) {
+  return rawUrl(key, '&inline=1&htmlview=1');
+}
+function reloadPreview() {
+  const f = document.querySelector('#preview-body iframe, #preview-body embed');
+  if (!f) return;
+  const src = f.src || f.getAttribute('src');
+  f.setAttribute('src', src); // embed 重设 src 也会重新加载
+}
+function openRawTab(key, ct) {
+  const u = rawUrl(key, ct === 'text/html' ? '&inline=1&htmlview=1' : '&inline=1');
+  window.open(u, '_blank', 'noopener');
 }
 function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 

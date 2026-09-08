@@ -92,6 +92,8 @@ HTTP API 一览（所有请求需要 `Authorization: Bearer <AGENT_TOKEN>`）：
 | PUT | `/api/upload?key=reports/xxx.json` | 上传，body 是原始字节，`Content-Type` 头可选 |
 | GET | `/api/list?prefix=reports/&limit=100` | 列表（分页 cursor） |
 | GET | `/api/raw?key=...` | 下载原始字节；`&download=1` 强制 attachment |
+| GET | `/api/raw?key=...&inline=1&htmlview=1` | text/html 专用沙箱内联通道：响应带 `CSP: sandbox`（不透明源），预览 iframe/查看页专用；缺 `htmlview=1` 时 HTML 一律 attachment |
+| GET | `/htmlview?key=...` | 手机 HTML 全屏查看页（鉴权同 API）：顶层沙箱 iframe + 缩放按钮 + 双指缩放，`✕` 返回列表 |
 | DELETE | `/api/delete?key=...` | 删除（幂等） |
 | GET | `/api/usage` | 存储用量（前端额度条数据源） |
 
@@ -129,6 +131,7 @@ Agent 约定把文件放到固定前缀下，方便浏览：
 | JWT 伪造防护 | Worker 用团队 JWKS 公钥验证 Access JWT 的 RS256 签名 + iss + exp + aud；头部存在≠可信 |
 | 注入防护 | key 白名单校验（拒绝 `..`、控制字符、超长）；`Content-Disposition` 固定 attachment + ASCII 回退文件名 |
 | XSS 防护 | HTML 界面带 CSP（default-src 'none'）；存储型 HTML/SVG 永不 inline 渲染；`nosniff` 全覆盖 |
+| HTML 查看器 | 手机端 HTML 全屏查看走 `/htmlview`：文档渲染在双重沙箱（iframe `sandbox` 无 same-origin + 响应 `CSP: sandbox`）里，读不到本站 cookie/token，不能导航顶层页面；普通 raw 直连依旧强制下载 |
 | 上传限制 | 默认单文件 ≤512MB（可配），x-meta 头数量/长度受限 |
 | Token 保存 | `~/.r2-vault/token`，600 权限；secret 存 Workers Secrets，不进代码仓库 |
 

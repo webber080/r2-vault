@@ -186,6 +186,15 @@ const INLINE_SAFE_CT = [
   'video/', 'audio/',
 ];
 
+// htmlview 专用 raw CSP：把存储型 HTML 关进不透明沙箱源
+// （无 allow-same-origin → 读不到本站 cookie/localStorage；无 allow-top-navigation
+//   → 不能劫持查看页；form/action/postMessage 全关）
+const HTMLVIEW_RAW_CSP =
+  "sandbox; default-src 'none'; img-src data: blob: https: http:; " +
+  "style-src 'unsafe-inline' https: http:; font-src data: https: http:; " +
+  "media-src data: blob: https: http:; script-src 'unsafe-inline' 'unsafe-eval'; " +
+  "form-action 'none'; frame-ancestors 'self'";
+
 // ──────────────── 通用工具 ────────────────
 
 function json(data, init = {}) {
@@ -222,6 +231,88 @@ const HTML_SECURITY_HEADERS = {
   'Referrer-Policy': 'no-referrer',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 };
+
+// ──────────────── 手机 HTML 全屏查看器（/htmlview）────────────────
+// 背景：text/html 在本站源下直接渲染 = 存储型 XSS，所以 /api/raw 对 HTML
+// 一律 attachment（下载）。但手机上「先下载→文件管理→打开」太繁琐，且预览
+// modal 在手机上只有 390px 宽，看文档没有意义。
+// 方案：顶层全屏查看页 + sandbox iframe + CSP sandbox 双保险。
+//   - iframe 无 allow-same-origin → 内容脚本运行在不透明源，拿不到本站
+//     cookie / localStorage / token；
+//   - /api/raw 响应再叠加 CSP: sandbox → 即使有人直接在顶层标签打开同一条
+//     raw URL，文档也强制进沙箱源，防线不依赖「必须从 iframe 加载」；
+//   - 查看页占满整屏（100dvh + safe-area），支持双指缩放与 +/- 按钮缩放，
+//     顶栏提供 关闭/刷新，下载走 attachment（沙箱内 a[download] 被禁，由
+//     顶栏代劳）。
+const HTMLVIEW_PAGE = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=0.4,maximum-scale=6,user-scalable=yes,viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>查看</title>
+<style>
+  * { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
+  html, body { margin: 0; padding: 0; height: 100%; background: #0f172a; overscroll-behavior: none; }
+  #bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; align-items: center; gap: 2px;
+         padding: calc(env(safe-area-inset-top) + 6px) 8px 6px; background: rgba(15,23,42,.94); color: #e2e8f0;
+         font: 500 14px/1 system-ui, sans-serif; }
+  #bar button { flex: 0 0 auto; min-width: 42px; min-height: 40px; border: 0; border-radius: 9px;
+         background: transparent; color: #e2e8f0; font-size: 19px; padding: 0 8px; cursor: pointer; }
+  #bar button:active { background: rgba(255,255,255,.14); }
+  #name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; opacity: .85; }
+  #zoomTag { flex: 0 0 auto; font-size: 12px; color: #93a4c3; min-width: 42px; text-align: center; }
+  #stage { position: fixed; inset: 0; padding-top: calc(env(safe-area-inset-top) + 52px); background: #0f172a; }
+  #frameWrap { width: 100%; height: 100%; overflow: auto; -webkit-overflow-scrolling: touch; }
+  iframe { display: block; border: 0; background: #fff; transform-origin: 0 0; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="back" title="关闭">✕</button>
+  <span id="name"></span>
+  <button id="zo" title="缩小">−</button>
+  <span id="zoomTag">100%</span>
+  <button id="zi" title="放大">＋</button>
+  <button id="rf" title="刷新">⟳</button>
+</div>
+<div id="stage"><div id="frameWrap"><iframe id="f" sandbox="allow-scripts allow-popups allow-forms" referrerpolicy="no-referrer" title="preview"></iframe></div></div>
+<script>
+(function () {
+  var P = new URLSearchParams(location.search);
+  var KEY = P.get('key') || '';
+  var TOKEN = P.get('token') || '';
+  var BASE = location.origin + '/api/raw?key=' + encodeURIComponent(KEY) + '&inline=1&htmlview=1';
+  if (TOKEN) BASE += '&token=' + encodeURIComponent(TOKEN);
+  document.getElementById('name').textContent = KEY.split('/').pop();
+  var f = document.getElementById('f');
+  var wrap = document.getElementById('frameWrap');
+  var z = 1, MIN = 0.5, MAX = 4;
+  function apply() {
+    var r = wrap.getBoundingClientRect();
+    var w = Math.max(200, Math.round(r.width / z));
+    var h = Math.max(200, Math.round(r.height / z));
+    f.style.width = w + 'px';
+    f.style.height = h + 'px';
+    f.style.transform = z === 1 ? 'none' : 'scale(' + z + ')';
+    document.getElementById('zoomTag').textContent = Math.round(z * 100) + '%';
+  }
+  function step(d) { z = Math.min(MAX, Math.max(MIN, Math.round((z + d) * 100) / 100)); apply(); }
+  document.getElementById('zi').onclick = function () { step(+0.25); };
+  document.getElementById('zo').onclick = function () { step(-0.25); };
+  document.getElementById('rf').onclick = function () { f.src = BASE; };
+  document.getElementById('back').onclick = function () {
+    if (history.length > 1) history.back(); else location.href = '/';
+  };
+  f.addEventListener('dblclick', function () { z = z === 1 ? 2 : 1; apply(); });
+  window.addEventListener('resize', apply);
+  window.addEventListener('orientationchange', function () { setTimeout(apply, 250); });
+  f.src = BASE;
+  apply();
+})();
+</script>
+</body>
+</html>`;
 
 // ──────────────── key 校验 ────────────────
 
@@ -421,6 +512,26 @@ export default {
       });
     }
 
+    // 手机 HTML 全屏查看页：/htmlview?key=<key>[&token=]
+    // 鉴权与 /api/* 完全一致（Bearer token 或已验证 Access JWT）——生产环境
+    // 手机 PWA 走 Access cookie（无 token），必须接受 JWT 才能进。
+    // 页面本身不含文件内容，真正取数由沙箱 iframe 走 /api/raw?inline=1&htmlview=1
+    if (path === '/htmlview' && request.method === 'GET') {
+      const key = url.searchParams.get('key');
+      if (!key) return err('Missing ?key=<path>');
+      if (!validKey(key)) return err('Invalid key', 400);
+      const agentOk = await checkAgentAuth(request, env, url);
+      const accessOk = agentOk ? false : await checkAccessAuth(request, env);
+      if (!agentOk && !accessOk) return err('Unauthorized', 401);
+      return new Response(HTMLVIEW_PAGE, {
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+          ...securityHeaders({ 'Referrer-Policy': 'no-referrer' }),
+        },
+      });
+    }
+
     // ──────────────── PWA 资产 ────────────────
     if (path === '/manifest.webmanifest') {
       return new Response(MANIFEST_JSON, {
@@ -560,12 +671,24 @@ if (!agentOk && !accessOk) return err('Unauthorized', 401);
         const fname = key.split('/').pop() || 'file';
         const wantDownload = url.searchParams.get('download') === '1';
         const wantInline = url.searchParams.get('inline') === '1';
+        const wantHtmlView = url.searchParams.get('htmlview') === '1';
         // 浏览器域直接访问默认下载（防直连渲染不可信内容）；显式 inline=1 且类型安全才内联
         let kind = 'attachment';
         if (wantInline && isInlineSafe(ct)) kind = 'inline';
         else if (!wantDownload && !isBrowserHost) kind = 'inline'; // API 域给 Agent 原始字节，无所谓
 
+        // htmlview 模式：text/html 经专用沙箱通道内联（查看页/预览 iframe 专用）。
+        // 安全性靠三层：① 仅接受显式 htmlview=1（UI 只在沙箱 iframe 里用它）；
+        // ② 响应带 CSP sandbox → 文档运行在不透明源，拿不到本站任何 cookie；
+        // ③ nosniff + no-store。顶层直接打开这条 raw URL 也被 CSP sandbox 兜住。
         const headers = new Headers();
+        if (wantInline && ct === 'text/html') {
+          if (wantHtmlView) {
+            headers.set('Content-Security-Policy', HTMLVIEW_RAW_CSP);
+          } else {
+            kind = 'attachment'; // 无 htmlview 标记的 HTML 仍按原防线强制下载
+          }
+        }
         headers.set('Content-Type', ct);
         headers.set('ETag', obj.etag);
         headers.set('Last-Modified', obj.uploaded.toUTCString());
